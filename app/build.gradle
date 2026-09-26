@@ -13,8 +13,8 @@ android {
         applicationId "com.theglitchh.NothingLand"
         minSdk 26
         targetSdk 33
-        versionCode 03
-        versionName "0.3"
+        versionCode 4
+        versionName "0.4"
         // Repo the in-app updater checks for new releases. Point this at YOUR fork,
         // not the upstream author's repo, or you'll get prompted to install their build.
         buildConfigField "String", "UPDATE_REPO", "\"andrasulthan-alt/OmniLand\""
@@ -61,6 +61,7 @@ dependencies {
         }
     }
     implementation 'androidx.appcompat:appcompat:1.5.0'
+    implementation 'androidx.core:core:1.9.0'
     implementation 'com.google.android.material:material:1.8.0-alpha01'
     testImplementation 'junit:junit:4.13.2'
     androidTestImplementation 'androidx.test.ext:junit:1.1.3'
