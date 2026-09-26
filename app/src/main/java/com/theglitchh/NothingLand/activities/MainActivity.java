@@ -5,6 +5,7 @@ import android.annotation.SuppressLint;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
+import android.content.ActivityNotFoundException;
 import android.content.BroadcastReceiver;
 import android.content.ClipData;
 import android.content.ClipboardManager;
@@ -18,10 +19,13 @@ import android.graphics.Paint;
 import android.graphics.Rect;
 import android.graphics.drawable.Drawable;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
+import android.os.PowerManager;
 import android.provider.Settings;
 import android.util.TypedValue;
 import android.view.View;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
@@ -35,6 +39,7 @@ import androidx.recyclerview.widget.RecyclerView;
 import com.theglitchh.NothingLand.BuildConfig;
 import com.theglitchh.NothingLand.R;
 import com.theglitchh.NothingLand.plugins.ExportedPlugins;
+import com.theglitchh.NothingLand.services.OverlayService;
 import com.theglitchh.NothingLand.services.UpdaterService;
 import com.theglitchh.NothingLand.utils.adapters.RecylerViewSettingsAdapter;
 import com.theglitchh.NothingLand.utils.SettingStruct;
@@ -68,12 +73,40 @@ public class MainActivity extends AppCompatActivity implements SharedPreferences
         ) || ActivityCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             startActivity(new Intent(this, PermissionActivity.class));
         }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                ActivityCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.POST_NOTIFICATIONS}, 105);
+        }
         MaterialCardView enable_btn = findViewById(R.id.enable_switch);
         enable_btn.setOnClickListener(l -> {
-            Intent intent = new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS);
-            startActivity(intent);
-            Toast.makeText(this, "Installed Apps -> NothingLand", Toast.LENGTH_SHORT).show();
+            if (isAccessibilityServiceEnabled()) {
+                Toast.makeText(this, "NothingLand is already enabled", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                // Android 13+ blocks sideloaded apps from turning on an Accessibility
+                // Service directly ("Restricted setting"). Guide the user around it.
+                new MaterialAlertDialogBuilder(this)
+                        .setTitle("One extra step on Android 13+")
+                        .setMessage("Sideloaded apps can't enable this directly on Android 13 and up.\n\n" +
+                                "If the toggle is greyed out or shows \"Restricted setting\":\n" +
+                                "1. Open NothingLand's App Info page\n" +
+                                "2. Tap the 3-dot menu (top right)\n" +
+                                "3. Tap \"Allow restricted settings\"\n" +
+                                "4. Come back here and open Accessibility settings again")
+                        .setPositiveButton("Open App Info", (d, w) ->
+                                startActivity(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                                        Uri.parse("package:" + getPackageName()))))
+                        .setNeutralButton("Open Accessibility Settings", (d, w) ->
+                                startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)))
+                        .setNegativeButton("Cancel", null)
+                        .show();
+            } else {
+                startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS));
+                Toast.makeText(this, "Installed Apps -> NothingLand", Toast.LENGTH_SHORT).show();
+            }
         });
+        updateEnableStatus();
         settings.add(new SettingStruct("Manage Overlay Layout", "App Settings", SettingStruct.TYPE_CUSTOM) {
             @Override
             public void onClick(Context c) {
@@ -99,6 +132,12 @@ public class MainActivity extends AppCompatActivity implements SharedPreferences
                     sharedPreferences.edit().putBoolean("update_enabled", checked).apply();
                 }
             });
+        settings.add(new SettingStruct("Disable battery optimization", "App Settings", SettingStruct.TYPE_CUSTOM) {
+            @Override
+            public void onClick(Context c) {
+                requestIgnoreBatteryOptimizations();
+            }
+        });
         settings.add(new SettingStruct("Invert long press and click functions", "App Settings", SettingStruct.TYPE_TOGGLE) {
             @Override
             public void onCheckChanged(boolean checked, Context ctx) {
@@ -170,6 +209,39 @@ public class MainActivity extends AppCompatActivity implements SharedPreferences
     protected void onResume() {
         super.onResume();
         sharedPreferences.registerOnSharedPreferenceChangeListener(this);
+        updateEnableStatus();
+    }
+
+    private boolean isAccessibilityServiceEnabled() {
+        String service = getPackageName() + "/" + OverlayService.class.getName();
+        String enabledServices = Settings.Secure.getString(getContentResolver(), Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES);
+        if (enabledServices == null) return false;
+        for (String s : enabledServices.split(":")) {
+            if (s.equalsIgnoreCase(service)) return true;
+        }
+        return false;
+    }
+
+    private void updateEnableStatus() {
+        TextView status = findViewById(R.id.enable_status_text);
+        if (status == null) return;
+        status.setText(isAccessibilityServiceEnabled() ? "Enabled" : "Tap to enable");
+    }
+
+    private void requestIgnoreBatteryOptimizations() {
+        PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
+        String pkg = getPackageName();
+        if (pm != null && pm.isIgnoringBatteryOptimizations(pkg)) {
+            Toast.makeText(this, "Battery optimization already disabled for NothingLand", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        try {
+            Intent intent = new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS);
+            intent.setData(Uri.parse("package:" + pkg));
+            startActivity(intent);
+        } catch (ActivityNotFoundException e) {
+            startActivity(new Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS));
+        }
     }
 
     @Override
