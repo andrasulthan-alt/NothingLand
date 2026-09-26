@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">NothingLand</string>
+    <string name="app_name">OmniLand</string>
     <string name="cover">cover</string>
     <string name="pause_play">pause/play</string>
     <string name="next">next</string>
@@ -9,7 +9,7 @@
     <string name="draw_over_other_apps">Draw over other apps</string>
     <string name="notification_access">Notification Access</string>
     <string name="record_audio_from_apps">Record Audio from apps</string>
-    <string name="enable_smart_edge">Enable Nothing Land</string>
+    <string name="enable_smart_edge">Enable OmniLand</string>
     <string name="enable_hardware_acceleration">Enable Hardware Acceleration</string>
     <string name="access_description">Turn on to let the app draw over status bar</string>
     <string name="x_offset">X offset</string>
