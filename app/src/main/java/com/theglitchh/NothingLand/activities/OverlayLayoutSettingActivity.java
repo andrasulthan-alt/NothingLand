@@ -13,6 +13,7 @@ import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
 
 import com.theglitchh.NothingLand.R;
+import com.theglitchh.NothingLand.utils.CutoutPosition;
 import com.google.android.material.imageview.ShapeableImageView;
 import com.google.android.material.slider.Slider;
 
@@ -182,15 +183,19 @@ public class OverlayLayoutSettingActivity extends AppCompatActivity {
         gap.setValue(sharedPreferences.getFloat("overlay_gap", 50));
         w.setValue(sharedPreferences.getFloat("overlay_w", 83));
         h.setValue(sharedPreferences.getFloat("overlay_h", 40));
-        x.setValue(sharedPreferences.getFloat("overlay_x", 0));
-        y.setValue(sharedPreferences.getFloat("overlay_y", 0.67f));
+        // Same defaults as the island itself: centred on the front camera if the phone has one.
+        float[] cutoutDefault = CutoutPosition.compute(this, sharedPreferences.getFloat("overlay_h", 40));
+        final float defaultX = cutoutDefault != null ? cutoutDefault[0] : CutoutPosition.LEGACY_X;
+        final float defaultY = cutoutDefault != null ? cutoutDefault[1] : CutoutPosition.LEGACY_Y;
+        x.setValue(sharedPreferences.getFloat("overlay_x", defaultX));
+        y.setValue(sharedPreferences.getFloat("overlay_y", defaultY));
         updateTexts();
         findViewById(R.id.reset_btn).setOnClickListener(l -> {
             gap.setValue(40);
             w.setValue(100);
             h.setValue(40);
-            x.setValue(0);
-            y.setValue(0.1f);
+            x.setValue(defaultX);
+            y.setValue(defaultY);
             onChange();
         });
 
