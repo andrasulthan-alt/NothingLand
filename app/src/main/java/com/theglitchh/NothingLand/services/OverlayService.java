@@ -108,9 +108,14 @@ public class OverlayService extends AccessibilityService {
                 if (mView != null && mWindowManager != null) {
                     WindowManager.LayoutParams mParams = (WindowManager.LayoutParams) mView.getLayoutParams();
 
-                    minWidth = dpToInt((int) sharedPreferences.getFloat("overlay_w", 83));
-                    minHeight = dpToInt((int) sharedPreferences.getFloat("overlay_h", 40));
+                    minWidth = Math.max(dpToInt(24), dpToInt((int) sharedPreferences.getFloat("overlay_w", 83)));
+                    minHeight = Math.max(dpToInt(16), dpToInt((int) sharedPreferences.getFloat("overlay_h", 40)));
                     gap = dpToInt((int) sharedPreferences.getFloat("overlay_gap", 50));
+                    // Width applies right away: as the idle size, and as the minimum
+                    // width while something (music, timer, ...) is showing.
+                    mView.setMinimumWidth(minWidth);
+                    last_min_size = minWidth;
+                    if (binded_plugin == null) mParams.width = minWidth;
                     y = (int) (sharedPreferences.getFloat("overlay_y", defaultYPercent) * 0.01 * metrics.heightPixels);
                     x = (int) (sharedPreferences.getFloat("overlay_x", defaultXPercent) * 0.01 * metrics.widthPixels);
                     mParams.y = y;
@@ -427,18 +432,18 @@ public class OverlayService extends AccessibilityService {
 
 
         if (minWidth == 0) {
-            minWidth = dpToInt((int) sharedPreferences.getFloat("overlay_w", 83));
+            minWidth = Math.max(dpToInt(24), dpToInt((int) sharedPreferences.getFloat("overlay_w", 83)));
         }
         if (minHeight == 0) {
-            minHeight = dpToInt((int) sharedPreferences.getFloat("overlay_h", 40));
+            minHeight = Math.max(dpToInt(16), dpToInt((int) sharedPreferences.getFloat("overlay_h", 40)));
         }
         if (gap == 0) {
             gap = dpToInt((int) sharedPreferences.getFloat("overlay_gap", 50));
         }
         color = sharedPreferences.getInt("color", getColor(R.color.black));
-        if (sharedPreferences.getBoolean("wallpaper_color", false) && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            // Material You: a deep tone from the wallpaper palette.
-            color = getColor(android.R.color.system_accent1_700);
+        if (sharedPreferences.getBoolean("wallpaper_color", false)) {
+            Integer fromWallpaper = wallpaperIslandColor();
+            if (fromWallpaper != null) color = fromWallpaper;
         }
         textColor = isColorDark(color) ? getColor(R.color.white) : getColor(R.color.black);
         last_min_size = minWidth;
@@ -446,6 +451,8 @@ public class OverlayService extends AccessibilityService {
         LayoutInflater layoutInflater = (LayoutInflater) this.getSystemService(Context.LAYOUT_INFLATER_SERVICE);
         getBaseContext().setTheme(R.style.Theme_TheGlitchh);
         mView = layoutInflater.inflate(R.layout.overlay_layout, null);
+        // The Width setting is also the minimum width while a plugin is showing.
+        mView.setMinimumWidth(minWidth);
 
 
         ctx = DynamicColors.wrapContextIfAvailable(getBaseContext(), com.google.android.material.R.style.ThemeOverlay_Material3_DynamicColors_DayNight);
@@ -946,6 +953,43 @@ public class OverlayService extends AccessibilityService {
             }
         });
         animator.start();
+    }
+
+    // ------------------------------------------------------------ wallpaper colour
+
+    /**
+     * A rich, dark island colour taken from the wallpaper itself. Uses the colours
+     * Android extracts from the wallpaper (Android 8.1+), so it follows the real
+     * wallpaper on every brand, including phones without Google's Material You
+     * palette (which otherwise fall back to a default blue).
+     */
+    private Integer wallpaperIslandColor() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O_MR1) return null;
+        try {
+            android.app.WallpaperManager wm = android.app.WallpaperManager.getInstance(this);
+            android.app.WallpaperColors colors = wm.getWallpaperColors(android.app.WallpaperManager.FLAG_SYSTEM);
+            if (colors == null) return null;
+            // Prefer the most colourful of the wallpaper's main colours.
+            Color[] candidates = {colors.getPrimaryColor(), colors.getSecondaryColor(), colors.getTertiaryColor()};
+            float[] hsv = new float[3];
+            int best = colors.getPrimaryColor().toArgb();
+            float bestSat = -1;
+            for (Color c : candidates) {
+                if (c == null) continue;
+                Color.colorToHSV(c.toArgb(), hsv);
+                if (hsv[1] > bestSat) {
+                    bestSat = hsv[1];
+                    best = c.toArgb();
+                }
+            }
+            Color.colorToHSV(best, hsv);
+            hsv[1] = Math.min(hsv[1], 0.85f);
+            hsv[2] = Math.max(0.18f, Math.min(hsv[2], 0.40f));
+            return Color.HSVToColor(hsv);
+        } catch (Throwable t) {
+            Log.w("OverlayService", "Could not read wallpaper colours", t);
+            return null;
+        }
     }
 
     // ------------------------------------------------------------ haptics
