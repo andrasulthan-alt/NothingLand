@@ -1,0 +1,60 @@
+# OmniLand
+
+A Dynamic Island–style overlay for Android. OmniLand puts a small pill around your front camera that expands to show music controls, notifications and charging status.
+
+OmniLand is a fork of [NothingLand](https://github.com/TheSerphh/NothingLand), originally made for Nothing phones. This fork focuses on making it work well on **any Android phone**, with signed releases you can update without reinstalling.
+
+## Features
+
+- **Media**: current song, playback controls and an audio visualizer
+- **Notifications**: incoming notifications in the island; choose which apps are allowed
+- **Charging**: battery level while the phone is charging
+- **Gestures**: tap, long-press and swipe to expand, collapse or dismiss
+- **Looks**: custom background color, accent color or your own background image; adjustable size and position
+- **Automatic positioning**: the island centers itself on your front camera (Android 11+)
+
+## Requirements
+
+- Android 8.0 or newer
+- Background blur needs Android 12 or newer (the island works without it on older versions)
+
+Tested on: Samsung Galaxy S20 Ultra (Android 13). Reports from other phones are welcome in [Issues](https://github.com/andrasulthan-alt/OmniLand/issues).
+
+## Download
+
+- **GitHub Releases**: [latest APK](https://github.com/andrasulthan-alt/OmniLand/releases/latest)
+- **Obtainium** or **Komi Store**: add `https://github.com/andrasulthan-alt/OmniLand`
+
+Updates install over the previous version and keep your settings.
+
+> **Upgrading from 0.4 or earlier?** Version 0.5 has a new app ID, so uninstall the old OmniLand once before installing 0.5. This is only needed once.
+
+## Setup
+
+1. **Install the APK.** Google Play Protect may block it, because the app uses accessibility and notification access. If so, open Play Store > profile > Play Protect > settings, turn off "Scan apps with Play Protect", install OmniLand, then turn scanning back on.
+2. **Open OmniLand** and grant the permissions it asks for.
+3. **Turn on the accessibility service**: Settings > Accessibility > Installed apps > OmniLand.
+   On Android 13 and newer you'll first see **"Restricted setting"**. Tap OK, then go to Settings > Apps > OmniLand, tap **Allow restricted settings** (in the ⋮ menu or at the top right), and try again.
+4. Optional: in OmniLand, tap **Disable battery optimization** so the system doesn't stop the island in the background.
+
+## Permissions
+
+| Permission | Why |
+|---|---|
+| Accessibility service | Draws the island over other apps and the status bar |
+| Notification access | Shows notifications and detects media playback |
+| Microphone (record audio) | Only for the music visualizer; audio is analyzed live and never recorded or saved |
+| Photos / storage | Only if you choose a custom background image |
+| Internet | Only to check GitHub for a newer OmniLand version |
+| Query installed apps | To list apps in the notification filter |
+
+OmniLand has no ads, no analytics and no tracking.
+
+## Building
+
+Every push to the `NL-beta` branch builds an APK with GitHub Actions (Actions tab > Build APK > Artifacts). Release builds are signed with the project's release key, stored as repository secrets; forks without those secrets get a debug APK instead.
+
+## Credits and license
+
+- Original app: [NothingLand](https://github.com/TheSerphh/NothingLand) by theglitchh, released under the MIT License. The original notice is kept in [LICENSE-NothingLand-MIT.txt](LICENSE-NothingLand-MIT.txt).
+- OmniLand, including all changes in this fork, is licensed under the [GNU General Public License v3.0](LICENSE).
