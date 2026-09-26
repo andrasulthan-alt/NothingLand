@@ -226,3 +226,165 @@ public class CardsPlugin extends BasePlugin {
 
         // Media volume
         final AudioManager audio = (AudioManager) ctx.getSystemService(Context.AUDIO_SERVICE);
+        panel.addView(label("🔊 Media volume"));
+        slider(audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC), audio.getStreamVolume(AudioManager.STREAM_MUSIC), new OnChange() {
+            @Override
+            public void onProgressChanged(SeekBar sb, int value, boolean fromUser) {
+                if (!fromUser) return;
+                resetAutoClose();
+                try {
+                    audio.setStreamVolume(AudioManager.STREAM_MUSIC, value, 0);
+                } catch (Exception e) {
+                    Log.w("CardsPlugin", "Volume failed", e);
+                }
+            }
+        });
+
+        // Flashlight
+        final int torchMax = QuickActions.torchMaxLevel(ctx);
+        panel.addView(label(torchMax > 1 ? "🔦 Flashlight brightness" : "🔦 Flashlight"));
+        slider(torchMax, QuickActions.isTorchOn() ? torchMax : 0, new OnChange() {
+            @Override
+            public void onProgressChanged(SeekBar sb, int value, boolean fromUser) {
+                if (!fromUser) return;
+                resetAutoClose();
+            }
+
+            @Override
+            public void onStopTrackingTouch(SeekBar sb) {
+                QuickActions.setTorchLevel(ctx, sb.getProgress());
+            }
+        });
+    }
+
+    private void buildAppsCard() {
+        String csv = ctx.sharedPreferences.getString("favorite_apps", "");
+        ArrayList<String> pkgs = new ArrayList<>();
+        if (csv != null) {
+            for (String p : csv.split(",")) if (!p.trim().isEmpty()) pkgs.add(p.trim());
+        }
+        if (pkgs.isEmpty()) {
+            TextView tv = label("No favorite apps yet. Choose them in OmniLand → Gestures and quick cards.");
+            tv.setGravity(Gravity.CENTER);
+            panel.addView(tv);
+            return;
+        }
+        PackageManager pm = ctx.getPackageManager();
+        LinearLayout rowView = null;
+        int size = ctx.dpToInt(52);
+        int perRow = 4;
+        for (int i = 0; i < pkgs.size() && i < 8; i++) {
+            if (i % perRow == 0) {
+                rowView = new LinearLayout(ctx);
+                rowView.setOrientation(LinearLayout.HORIZONTAL);
+                rowView.setGravity(Gravity.CENTER);
+                panel.addView(rowView, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+            }
+            final String pkg = pkgs.get(i);
+            Drawable icon;
+            try {
+                ApplicationInfo info = pm.getApplicationInfo(pkg, 0);
+                icon = pm.getApplicationIcon(info);
+            } catch (Exception e) {
+                continue;
+            }
+            ImageView iv = new ImageView(ctx);
+            iv.setImageDrawable(icon);
+            int m = ctx.dpToInt(8);
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(size, size);
+            lp.setMargins(m, m, m, m);
+            iv.setOnClickListener(v -> {
+                QuickActions.launchApp(ctx, pkg);
+                close();
+            });
+            rowView.addView(iv, lp);
+        }
+    }
+
+    // ---------------------------------------------------------------- expand / collapse
+
+    private int expandedHeight() {
+        if (CARD_APPS.equals(card)) {
+            String csv = ctx.sharedPreferences.getString("favorite_apps", "");
+            int n = csv == null || csv.trim().isEmpty() ? 0 : csv.split(",").length;
+            int rows = Math.max(1, (Math.min(n, 8) + 3) / 4);
+            return ctx.statusBarHeight + ctx.dpToInt(30 + rows * 68);
+        }
+        return ctx.statusBarHeight + ctx.dpToInt(200);
+    }
+
+    private final CallBack startCallBack = new CallBack() {
+        @Override
+        public void onFinish() {
+            if (mView == null) return;
+            ViewGroup.LayoutParams lp = mView.getLayoutParams();
+            if (expanded) {
+                panel.setVisibility(View.VISIBLE);
+                mView.setPadding(0, ctx.statusBarHeight, 0, 0);
+                if (lp != null) {
+                    lp.width = ViewGroup.LayoutParams.MATCH_PARENT;
+                    lp.height = ViewGroup.LayoutParams.MATCH_PARENT;
+                    mView.setLayoutParams(lp);
+                }
+            } else {
+                panel.setVisibility(View.GONE);
+                mView.setPadding(0, 0, 0, 0);
+            }
+        }
+    };
+
+    private final CallBack endCallBack = new CallBack() {
+        @Override
+        public void onFinish() {
+            if (mView == null || expanded) return;
+            ViewGroup.LayoutParams lp = mView.getLayoutParams();
+            if (lp != null) {
+                lp.width = ViewGroup.LayoutParams.WRAP_CONTENT;
+                lp.height = ViewGroup.LayoutParams.WRAP_CONTENT;
+                mView.setLayoutParams(lp);
+            }
+        }
+    };
+
+    @Override
+    public void onExpand() {
+        if (expanded || mView == null) return;
+        expanded = true;
+        ctx.animateOverlay(expandedHeight(), ctx.metrics.widthPixels - ctx.dpToInt(15), true, startCallBack, endCallBack, false);
+    }
+
+    private void collapse() {
+        if (!expanded || mView == null) return;
+        expanded = false;
+        ctx.animateOverlay(ctx.minHeight, ViewGroup.LayoutParams.WRAP_CONTENT, false, startCallBack, endCallBack, false);
+    }
+
+    @Override
+    public void onCollapse() {
+        close();
+    }
+
+    @Override
+    public void onClick() {
+    }
+
+    @Override
+    public void onSwipeUp() {
+        close();
+    }
+
+    @Override
+    public void onTextColorChange() {
+        rebuildPanel();
+    }
+
+    @Override
+    public String[] permissionsRequired() {
+        return null;
+    }
+
+    @Override
+    public ArrayList<SettingStruct> getSettings() {
+        return null;
+    }
+}
