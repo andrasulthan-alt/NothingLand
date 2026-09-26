@@ -34,10 +34,6 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.provider.MediaStore;
-import android.renderscript.Allocation;
-import android.renderscript.Element;
-import android.renderscript.RenderScript;
-import android.renderscript.ScriptIntrinsicBlur;
 import android.util.DisplayMetrics;
 import android.util.Log;
 import android.util.TypedValue;
@@ -74,11 +70,9 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicLong;
-import android.graphics.RenderEffect;
 import android.graphics.BlurMaskFilter;
 import android.os.Build;
-import android.view.View;
-import android.view.WindowManager;
+
 public class OverlayService extends AccessibilityService {
     private boolean isOverlayHiddenByScreenshot = false;
     private final ArrayList<BasePlugin> plugins = ExportedPlugins.getPlugins();
@@ -293,7 +287,14 @@ public class OverlayService extends AccessibilityService {
             }
         });
         mWindowManager = (WindowManager) this.getSystemService(WINDOW_SERVICE);
-        mWindowManager.getDefaultDisplay().getMetrics(metrics);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            Rect bounds = mWindowManager.getCurrentWindowMetrics().getBounds();
+            metrics.widthPixels = bounds.width();
+            metrics.heightPixels = bounds.height();
+        } else {
+            //noinspection deprecation
+            mWindowManager.getDefaultDisplay().getMetrics(metrics);
+        }
         int resourceId = getResources().getIdentifier("status_bar_height", "dimen", "android");
         if (resourceId > 0) {
             statusBarHeight = getResources().getDimensionPixelSize(resourceId);
