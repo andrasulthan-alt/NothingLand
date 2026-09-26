@@ -8,6 +8,9 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      # Signed release build when the signing secrets exist; debug build otherwise (e.g. forks).
+      HAS_KEY: ${{ secrets.OMNILAND_KEYSTORE_B64 != '' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -17,18 +20,38 @@ jobs:
           distribution: temurin
           java-version: 11
 
-      - name: Accept Android SDK licenses
-        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
-
       - name: Fix gradlew line endings and grant execute permission
         run: |
           sed -i 's/\r$//' gradlew
           chmod +x gradlew
 
-      - name: Build debug APK
+      - name: Build signed release APK
+        if: env.HAS_KEY == 'true'
+        env:
+          OMNILAND_KEYSTORE_B64: ${{ secrets.OMNILAND_KEYSTORE_B64 }}
+          OMNILAND_KEYSTORE_PASSWORD: ${{ secrets.OMNILAND_KEYSTORE_PASSWORD }}
+          OMNILAND_KEY_ALIAS: ${{ secrets.OMNILAND_KEY_ALIAS }}
+          OMNILAND_KEY_PASSWORD: ${{ secrets.OMNILAND_KEY_PASSWORD }}
+        run: |
+          echo "$OMNILAND_KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/omniland-release.jks"
+          export OMNILAND_KEYSTORE_PATH="$RUNNER_TEMP/omniland-release.jks"
+          ./gradlew assembleRelease --stacktrace
+          rm -f "$RUNNER_TEMP/omniland-release.jks"
+
+      - name: Upload release APK
+        if: env.HAS_KEY == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: omniland-release-apk
+          path: app/build/outputs/apk/release/*.apk
+          if-no-files-found: error
+
+      - name: Build debug APK (no signing key configured)
+        if: env.HAS_KEY != 'true'
         run: ./gradlew assembleDebug --stacktrace
 
-      - name: Upload APK
+      - name: Upload debug APK
+        if: env.HAS_KEY != 'true'
         uses: actions/upload-artifact@v4
         with:
           name: omniland-debug-apk
