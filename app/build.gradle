@@ -15,6 +15,9 @@ android {
         targetSdk 33
         versionCode 03
         versionName "0.3"
+        // Repo the in-app updater checks for new releases. Point this at YOUR fork,
+        // not the upstream author's repo, or you'll get prompted to install their build.
+        buildConfigField "String", "UPDATE_REPO", "\"andrasulthan-alt/NothingLand\""
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
     signingConfigs {
