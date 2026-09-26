@@ -1,5 +1,6 @@
 package com.theglitchh.NothingLand.plugins;
 
+import android.graphics.drawable.Drawable;
 import android.view.View;
 import android.view.accessibility.AccessibilityEvent;
 
@@ -38,6 +39,14 @@ public abstract class BasePlugin {
     public abstract ArrayList<SettingStruct> getSettings();
 
     public void onBindComplete() {
+    }
+
+    /**
+     * Small icon shown in the round bubble next to the island when this plugin is
+     * active but another one currently owns the island. Return null for no bubble.
+     */
+    public Drawable getMiniIcon() {
+        return null;
     }
 
     public void onRightSwipe() {
