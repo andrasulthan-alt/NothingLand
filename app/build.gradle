@@ -17,7 +17,7 @@ android {
         versionName "0.3"
         // Repo the in-app updater checks for new releases. Point this at YOUR fork,
         // not the upstream author's repo, or you'll get prompted to install their build.
-        buildConfigField "String", "UPDATE_REPO", "\"andrasulthan-alt/NothingLand\""
+        buildConfigField "String", "UPDATE_REPO", "\"andrasulthan-alt/OmniLand\""
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
     signingConfigs {
