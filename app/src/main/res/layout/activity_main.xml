@@ -31,13 +31,23 @@
                 android:paddingVertical="15dp">
 
                 <TextView
+                    android:id="@+id/enable_title"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_alignParentStart="true"
-                    android:layout_centerVertical="true"
                     android:layout_marginEnd="10dp"
                     android:text="@string/enable_smart_edge"
                     android:textAppearance="@style/TextAppearance.MaterialComponents.Headline6" />
+
+                <TextView
+                    android:id="@+id/enable_status_text"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_below="@id/enable_title"
+                    android:layout_alignParentStart="true"
+                    android:layout_marginTop="4dp"
+                    android:text="Tap to enable"
+                    android:textAppearance="@style/TextAppearance.MaterialComponents.Body2" />
             </RelativeLayout>
         </com.google.android.material.card.MaterialCardView>
 
