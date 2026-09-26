@@ -60,6 +60,7 @@ import androidx.core.content.ContextCompat;
 import com.theglitchh.NothingLand.plugins.BasePlugin;
 import com.theglitchh.NothingLand.plugins.ExportedPlugins;
 import com.theglitchh.NothingLand.utils.CallBack;
+import com.theglitchh.NothingLand.utils.CutoutPosition;
 import com.theglitchh.NothingLand.R;
 import com.google.android.material.color.DynamicColors;
 import android.graphics.RenderEffect;
@@ -106,8 +107,8 @@ public class OverlayService extends AccessibilityService {
                     minWidth = dpToInt((int) sharedPreferences.getFloat("overlay_w", 83));
                     minHeight = dpToInt((int) sharedPreferences.getFloat("overlay_h", 40));
                     gap = dpToInt((int) sharedPreferences.getFloat("overlay_gap", 50));
-                    y = (int) (sharedPreferences.getFloat("overlay_y", 0.67f) * 0.01 * metrics.heightPixels);
-                    x = (int) (sharedPreferences.getFloat("overlay_x", 0) * 0.01 * metrics.widthPixels);
+                    y = (int) (sharedPreferences.getFloat("overlay_y", defaultYPercent) * 0.01 * metrics.heightPixels);
+                    x = (int) (sharedPreferences.getFloat("overlay_x", defaultXPercent) * 0.01 * metrics.widthPixels);
                     mParams.y = y;
                     mParams.x = x;
                     mParams.height = minHeight;
@@ -257,16 +258,16 @@ public class OverlayService extends AccessibilityService {
     public void onServiceConnected() {
         super.onServiceConnected();
         Thread.setDefaultUncaughtExceptionHandler((thread, throwable) -> {
-            throwable.printStackTrace();
-            if (sharedPreferences.getBoolean("clip_copy_enabled", true)) {
-                ClipboardManager clipboard = (ClipboardManager)
-                        getSystemService(Context.CLIPBOARD_SERVICE);
-                ClipData clip = ClipData.newPlainText("OmniLand error log", throwable.getMessage() + " : " + Arrays.toString(throwable.getStackTrace()));
-                clipboard.setPrimaryClip(clip);
-                Toast.makeText(this, "OmniLand Crashed, logs copied to clipboard", Toast.LENGTH_SHORT).show();
+            Log.e("OverlayService", "Uncaught exception on " + thread.getName(), throwable);
+            copyCrashLog(throwable);
+            // A background thread dying doesn't take the island down, so only
+            // exit if the main thread itself is gone (the guard below normally
+            // catches main-thread errors before they get here).
+            if (thread == Looper.getMainLooper().getThread()) {
+                Runtime.getRuntime().exit(0);
             }
-            Runtime.getRuntime().exit(0);
         });
+        installMainThreadGuard();
         IntentFilter filter = new IntentFilter(getPackageName() + ".SETTINGS_CHANGED");
         filter.addAction(getPackageName() + ".OVERLAY_LAYOUT_CHANGE");
         filter.addAction(Intent.ACTION_USER_PRESENT);
@@ -299,7 +300,79 @@ public class OverlayService extends AccessibilityService {
         if (resourceId > 0) {
             statusBarHeight = getResources().getDimensionPixelSize(resourceId);
         }
+        float[] cutoutDefault = CutoutPosition.compute(this, sharedPreferences.getFloat("overlay_h", 40));
+        if (cutoutDefault != null) {
+            defaultXPercent = cutoutDefault[0];
+            defaultYPercent = cutoutDefault[1];
+        }
         init();
+    }
+
+    // Default island position (percent of screen) used until the user sets their own.
+    // Centred on the front camera when the phone reports a cutout.
+    private float defaultXPercent = CutoutPosition.LEGACY_X;
+    private float defaultYPercent = CutoutPosition.LEGACY_Y;
+
+    private final ArrayList<Long> recentCrashes = new ArrayList<>();
+    private long lastCrashToast = 0;
+
+    /**
+     * Keeps the island alive when a plugin throws on the main thread. Instead of
+     * the whole service process dying (and the island disappearing until the user
+     * re-enables accessibility), the error is logged and the island is rebuilt.
+     * If it keeps failing (3 errors within 30 s) we stop and let it exit.
+     */
+    private void installMainThreadGuard() {
+        new Handler(Looper.getMainLooper()).post(() -> {
+            while (true) {
+                try {
+                    Looper.loop();
+                } catch (Throwable t) {
+                    Log.e("OverlayService", "Recovering from error", t);
+                    long now = System.currentTimeMillis();
+                    recentCrashes.add(now);
+                    recentCrashes.removeIf(time -> now - time > 30_000);
+                    copyCrashLog(t);
+                    if (recentCrashes.size() >= 3) {
+                        Runtime.getRuntime().exit(0);
+                    }
+                    rebuildOverlay();
+                }
+            }
+        });
+    }
+
+    private void rebuildOverlay() {
+        try {
+            plugins.forEach(p -> {
+                try {
+                    p.onDestroy();
+                } catch (Throwable ignored) {
+                }
+            });
+            queued.clear();
+            if (mView != null && mWindowManager != null && mView.getParent() != null) {
+                mWindowManager.removeViewImmediate(mView);
+            }
+            init();
+        } catch (Throwable t) {
+            Log.e("OverlayService", "Could not rebuild the island", t);
+        }
+    }
+
+    private void copyCrashLog(Throwable throwable) {
+        try {
+            if (!sharedPreferences.getBoolean("clip_copy_enabled", true)) return;
+            ClipboardManager clipboard = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+            ClipData clip = ClipData.newPlainText("OmniLand error log", throwable + " : " + Arrays.toString(throwable.getStackTrace()));
+            clipboard.setPrimaryClip(clip);
+            long now = System.currentTimeMillis();
+            if (now - lastCrashToast > 10_000 && Looper.myLooper() == Looper.getMainLooper()) {
+                lastCrashToast = now;
+                Toast.makeText(this, "OmniLand hit an error, log copied to clipboard", Toast.LENGTH_SHORT).show();
+            }
+        } catch (Throwable ignored) {
+        }
     }
 
     public int gap;
@@ -352,11 +425,11 @@ public class OverlayService extends AccessibilityService {
         ctx = DynamicColors.wrapContextIfAvailable(getBaseContext(), com.google.android.material.R.style.ThemeOverlay_Material3_DynamicColors_DayNight);
         mParams.gravity = Gravity.TOP | Gravity.CENTER;
         if (y == 0) {
-            y = (int) (sharedPreferences.getFloat("overlay_y", 0.67f) * 0.01f * metrics.heightPixels);
+            y = (int) (sharedPreferences.getFloat("overlay_y", defaultYPercent) * 0.01f * metrics.heightPixels);
         }
         mParams.y = y;
         if (x == 0) {
-            x = (int) (sharedPreferences.getFloat("overlay_x", 0) * 0.01f * metrics.widthPixels);
+            x = (int) (sharedPreferences.getFloat("overlay_x", defaultXPercent) * 0.01f * metrics.widthPixels);
         }
         mView.setBackgroundTintList(ColorStateList.valueOf(color));
 
