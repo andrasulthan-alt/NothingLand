@@ -31,6 +31,6 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: nothingland-debug-apk
+          name: omniland-debug-apk
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
