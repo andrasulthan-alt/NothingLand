@@ -18,6 +18,8 @@ import android.graphics.PorterDuff;
 import android.graphics.RenderEffect;
 import android.graphics.Shader;
 import android.graphics.drawable.AnimatedVectorDrawable;
+import android.graphics.drawable.BitmapDrawable;
+import android.graphics.drawable.Drawable;
 import android.media.MediaMetadata;
 import android.media.session.MediaController;
 import android.media.session.MediaSessionManager;
@@ -349,12 +351,82 @@ public class MediaSessionPlugin extends BasePlugin {
 
     @Override
     public View onBind() {
+        bound = true;
+        applyAlbumColor();
         return mView;
     }
 
     @Override
     public void onUnbind() {
         mHandler.removeCallbacks(r);
+        bound = false;
+        ctx.clearIslandColorOverride();
+    }
+
+    // ------------------------------------------------------------ album colour
+
+    private boolean bound = false;
+    private Bitmap lastCover;
+    private Integer albumColor;
+
+    /** Colours the island from the current album art (setting "Color island from album art"). */
+    private void applyAlbumColor() {
+        if (!bound) return;
+        if (albumColor == null || !ctx.sharedPreferences.getBoolean("album_color", true)) {
+            ctx.clearIslandColorOverride();
+            return;
+        }
+        ctx.setIslandColorOverride(albumColor);
+    }
+
+    /**
+     * Picks a rich, dark colour from the album art: the average of its most colourful
+     * pixels, darkened so white text and controls stay readable on top.
+     */
+    static Integer islandColorFrom(Bitmap art) {
+        try {
+            Bitmap small = Bitmap.createScaledBitmap(art, 24, 24, true);
+            float[] hsv = new float[3];
+            long r = 0, g = 0, b = 0, rAll = 0, gAll = 0, bAll = 0;
+            int n = 0, nAll = 0;
+            for (int yy = 0; yy < small.getHeight(); yy++) {
+                for (int xx = 0; xx < small.getWidth(); xx++) {
+                    int px = small.getPixel(xx, yy);
+                    rAll += Color.red(px);
+                    gAll += Color.green(px);
+                    bAll += Color.blue(px);
+                    nAll++;
+                    Color.colorToHSV(px, hsv);
+                    if (hsv[1] > 0.3f && hsv[2] > 0.25f) {
+                        r += Color.red(px);
+                        g += Color.green(px);
+                        b += Color.blue(px);
+                        n++;
+                    }
+                }
+            }
+            if (small != art) small.recycle();
+            if (nAll == 0) return null;
+            int avg = n >= 8
+                    ? Color.rgb((int) (r / n), (int) (g / n), (int) (b / n))
+                    : Color.rgb((int) (rAll / nAll), (int) (gAll / nAll), (int) (bAll / nAll));
+            Color.colorToHSV(avg, hsv);
+            hsv[1] = Math.min(hsv[1], 0.85f);
+            hsv[2] = Math.max(0.18f, Math.min(hsv[2], 0.40f));
+            return Color.HSVToColor(hsv);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    @Override
+    public Drawable getMiniIcon() {
+        if (!overlayOpen || lastCover == null) return null;
+        try {
+            return new BitmapDrawable(ctx.getResources(), lastCover);
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     @Override
@@ -536,6 +608,12 @@ public class MediaSessionPlugin extends BasePlugin {
         titleView.setText(queueStruct.getTitle());
         artistView.setText(queueStruct.getArtist());
         imageView.setImageBitmap(queueStruct.getCover());
+        if (queueStruct.getCover() != lastCover) {
+            lastCover = queueStruct.getCover();
+            albumColor = lastCover != null ? islandColorFrom(lastCover) : null;
+            applyAlbumColor();
+        }
+        ctx.refreshBubble();
         //imageView.setColorFilter(redTintColor, PorterDuff.Mode.SRC_ATOP); will use it in future for tinting
 
     }
