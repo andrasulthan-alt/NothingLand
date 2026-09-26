@@ -10,6 +10,7 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.graphics.Color;
 import android.os.BatteryManager;
+import android.os.Build;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -32,8 +33,8 @@ public class BatteryPlugin extends BasePlugin {
                 if (intent.getAction().equals(ctx.getPackageName() + ".COLOR_CHANGED")) {
                     // Handle color change, update UI or settings accordingly
                     int newColor = intent.getIntExtra("Allaccent_color", Color.RED);
-                    // Example: update the visualizer's color
-                    tv.setTextColor(newColor);
+                    // Only when the battery view is on screen.
+                    if (tv != null) tv.setTextColor(newColor);
                 }
             }
         }
@@ -54,6 +55,23 @@ public class BatteryPlugin extends BasePlugin {
     public void onCreate(OverlayService context) {
         ctx = context;
         ctx.registerReceiver(mBroadcastReceiver, new IntentFilter(Intent.ACTION_BATTERY_CHANGED));
+        ctx.registerReceiver(receiver, new IntentFilter(ctx.getPackageName() + ".COLOR_CHANGED"));
+    }
+
+    /** "Full in 1h 20m" from the system's own estimate (Android 9+), or "" if unknown. */
+    private String timeToFull() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) return "";
+        try {
+            BatteryManager bm = (BatteryManager) ctx.getSystemService(Context.BATTERY_SERVICE);
+            long ms = bm.computeChargeTimeRemaining();
+            if (ms <= 0) return "";
+            long min = ms / 60000;
+            if (min < 1) return " · almost full";
+            if (min < 60) return " · " + min + "m";
+            return " · " + (min / 60) + "h " + (min % 60) + "m";
+        } catch (Exception e) {
+            return "";
+        }
     }
 
     private View mView;
@@ -119,11 +137,9 @@ public class BatteryPlugin extends BasePlugin {
 
     private void updateView() {
         if (mView != null) {
-            tv.setText((int) batteryPercent + "%");
+            tv.setText((int) batteryPercent + "%" + timeToFull());
             batteryImageView.updateBatteryPercent(batteryPercent);
             SharedPreferences prefs = ctx.getSharedPreferences(ctx.getPackageName(), Context.MODE_PRIVATE);
-            IntentFilter filter = new IntentFilter(ctx.getPackageName() + ".COLOR_CHANGED");
-            ctx.registerReceiver(receiver, filter);
             if (batteryPercent > 80) {
                 batteryImageView.setStrokeColor(prefs.getInt("Allaccent_color", Color.RED));
                 tv.setTextColor(prefs.getInt("Allaccent_color", Color.RED));
@@ -168,7 +184,14 @@ public class BatteryPlugin extends BasePlugin {
 
     @Override
     public void onDestroy() {
-        ctx.unregisterReceiver(mBroadcastReceiver);
+        try {
+            if (ctx != null) ctx.unregisterReceiver(mBroadcastReceiver);
+        } catch (Exception ignored) {
+        }
+        try {
+            if (ctx != null) ctx.unregisterReceiver(receiver);
+        } catch (Exception ignored) {
+        }
     }
 
     @Override
