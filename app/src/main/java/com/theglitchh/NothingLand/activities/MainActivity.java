@@ -160,6 +160,10 @@ public class MainActivity extends AppCompatActivity implements SharedPreferences
                 sharedPreferences.edit().putBoolean("enable_on_lockscreen", checked).apply();
             }
         });
+        settings.add(appToggle("Smooth animations", "smooth_animation"));
+        settings.add(appToggle("Show a second activity as a bubble", "split_bubble"));
+        settings.add(appToggle("Color the island from album art", "album_color"));
+        settings.add(appToggle("Haptic feedback", "haptics_enabled"));
         settings.add(new SettingStruct("Copy crash logs to clipboard", "App Settings") {
             @Override
             public boolean onAttach(Context ctx) {
@@ -204,6 +208,21 @@ public class MainActivity extends AppCompatActivity implements SharedPreferences
     }
 
     private RecyclerView recyclerView;
+
+    /** On/off setting stored under key, on by default. */
+    private SettingStruct appToggle(String label, String key) {
+        return new SettingStruct(label, "App Settings", SettingStruct.TYPE_TOGGLE) {
+            @Override
+            public boolean onAttach(Context ctx) {
+                return sharedPreferences.getBoolean(key, true);
+            }
+
+            @Override
+            public void onCheckChanged(boolean checked, Context ctx) {
+                sharedPreferences.edit().putBoolean(key, checked).apply();
+            }
+        };
+    }
 
     @Override
     protected void onResume() {
