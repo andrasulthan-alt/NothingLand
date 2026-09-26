@@ -60,7 +60,7 @@ public class MainActivity extends AppCompatActivity implements SharedPreferences
             if (sharedPreferences.getBoolean("clip_copy_enabled", true)) {
                 ClipboardManager clipboard = (ClipboardManager)
                         getSystemService(Context.CLIPBOARD_SERVICE);
-                ClipData clip = ClipData.newPlainText("NothingLand error log", throwable.getMessage() + " : " + Arrays.toString(throwable.getStackTrace()));
+                ClipData clip = ClipData.newPlainText("OmniLand error log", throwable.getMessage() + " : " + Arrays.toString(throwable.getStackTrace()));
                 clipboard.setPrimaryClip(clip);
                 sendCrashNotification();
             }
@@ -80,7 +80,7 @@ public class MainActivity extends AppCompatActivity implements SharedPreferences
         MaterialCardView enable_btn = findViewById(R.id.enable_switch);
         enable_btn.setOnClickListener(l -> {
             if (isAccessibilityServiceEnabled()) {
-                Toast.makeText(this, "NothingLand is already enabled", Toast.LENGTH_SHORT).show();
+                Toast.makeText(this, "OmniLand is already enabled", Toast.LENGTH_SHORT).show();
                 return;
             }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -90,7 +90,7 @@ public class MainActivity extends AppCompatActivity implements SharedPreferences
                         .setTitle("One extra step on Android 13+")
                         .setMessage("Sideloaded apps can't enable this directly on Android 13 and up.\n\n" +
                                 "If the toggle is greyed out or shows \"Restricted setting\":\n" +
-                                "1. Open NothingLand's App Info page\n" +
+                                "1. Open OmniLand's App Info page\n" +
                                 "2. Tap the 3-dot menu (top right)\n" +
                                 "3. Tap \"Allow restricted settings\"\n" +
                                 "4. Come back here and open Accessibility settings again")
@@ -103,7 +103,7 @@ public class MainActivity extends AppCompatActivity implements SharedPreferences
                         .show();
             } else {
                 startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS));
-                Toast.makeText(this, "Installed Apps -> NothingLand", Toast.LENGTH_SHORT).show();
+                Toast.makeText(this, "Installed Apps -> OmniLand", Toast.LENGTH_SHORT).show();
             }
         });
         updateEnableStatus();
@@ -232,7 +232,7 @@ public class MainActivity extends AppCompatActivity implements SharedPreferences
         PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
         String pkg = getPackageName();
         if (pm != null && pm.isIgnoringBatteryOptimizations(pkg)) {
-            Toast.makeText(this, "Battery optimization already disabled for NothingLand", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "Battery optimization already disabled for OmniLand", Toast.LENGTH_SHORT).show();
             return;
         }
         try {
@@ -395,7 +395,7 @@ public class MainActivity extends AppCompatActivity implements SharedPreferences
 
         NotificationCompat.Builder notificationBuilder = new NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID);
         Notification notification = notificationBuilder.setOngoing(false)
-                .setContentTitle("NothingLand Crashed")
+                .setContentTitle("OmniLand Crashed")
                 .setContentText("Crash Log copied to clipboard")
                 .setSmallIcon(R.drawable.launcher_foreground)
                 .setPriority(NotificationManager.IMPORTANCE_MAX)
