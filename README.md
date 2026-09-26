@@ -6,12 +6,20 @@ OmniLand is a fork of [NothingLand](https://github.com/TheSerphh/NothingLand), o
 
 ## Features
 
+- **Calls**: incoming calls with Answer / Decline buttons, and a live timer during a call
+- **Timers and stopwatches**: a live countdown or stopwatch from your Clock app
+- **Downloads and uploads**: live progress from any app that shows a progress notification
 - **Media**: current song, playback controls and an audio visualizer
 - **Notifications**: incoming notifications in the island; choose which apps are allowed
 - **Charging**: battery level while the phone is charging
 - **Gestures**: tap, long-press and swipe to expand, collapse or dismiss
 - **Looks**: custom background color, accent color or your own background image; adjustable size and position
 - **Automatic positioning**: the island centers itself on your front camera (Android 11+)
+- **Two activities at once**: when two things are active (for example music and a timer), the second one appears as a small bubble next to the island; tap it to swap
+- **Album colors**: the island takes on a color from the album art of the song that's playing
+- **Smooth animations and haptic feedback**
+
+Each of the last four can be switched off in OmniLand's settings.
 
 ## Requirements
 
