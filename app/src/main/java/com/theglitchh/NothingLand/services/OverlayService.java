@@ -63,6 +63,8 @@ import com.theglitchh.NothingLand.plugins.BasePlugin;
 import com.theglitchh.NothingLand.plugins.ExportedPlugins;
 import com.theglitchh.NothingLand.utils.CallBack;
 import com.theglitchh.NothingLand.utils.CutoutPosition;
+import com.theglitchh.NothingLand.utils.QuickActions;
+import com.theglitchh.NothingLand.plugins.Cards.CardsPlugin;
 import com.theglitchh.NothingLand.R;
 import com.google.android.material.color.DynamicColors;
 import android.graphics.RenderEffect;
@@ -161,13 +163,17 @@ public class OverlayService extends AccessibilityService {
                 }
 
             } else {
-                Bundle settings = Objects.requireNonNull(intent.getExtras()).getBundle("settings");
-                assert settings != null;
-                for (String s : settings.keySet()) {
-                    if (settings.get(s) instanceof Boolean) {
-                        sharedPreferences.putBoolean(s, settings.getBoolean(s));
+                if (intent.getExtras() != null && intent.getExtras().getBundle("settings") != null) {
+                    Bundle settings = intent.getExtras().getBundle("settings");
+                    for (String s : settings.keySet()) {
+                        if (settings.get(s) instanceof Boolean) {
+                            sharedPreferences.putBoolean(s, settings.getBoolean(s));
+                        } else if (settings.get(s) instanceof String) {
+                            sharedPreferences.putString(s, settings.getString(s));
+                        }
                     }
                 }
+                // SETTINGS_CHANGED or WALLPAPER_CHANGED: rebuild the island with the new settings/colors.
                 plugins.forEach(p -> {
                     try {
                         p.onDestroy();
@@ -216,6 +222,7 @@ public class OverlayService extends AccessibilityService {
 
     private void expandOverlay() {
         haptic(HapticFeedbackConstants.LONG_PRESS);
+        if (binded_plugin == null && runGesture("gesture_long_press")) return;
         if (binded_plugin != null) {
             if (sharedPreferences.getBoolean("invert_click", false)) {
                 binded_plugin.onClick();
@@ -285,6 +292,7 @@ public class OverlayService extends AccessibilityService {
         filter.addAction(Intent.ACTION_USER_PRESENT);
         filter.addAction(Intent.ACTION_SCREEN_OFF);
         filter.addAction(getPackageName() + ".COLOR_CHANGED");
+        filter.addAction(Intent.ACTION_WALLPAPER_CHANGED);
         registerReceiver(broadcastReceiver, filter);
 
         SharedPreferences sharedPreferences2 = getSharedPreferences(getPackageName(), MODE_PRIVATE);
@@ -428,6 +436,10 @@ public class OverlayService extends AccessibilityService {
             gap = dpToInt((int) sharedPreferences.getFloat("overlay_gap", 50));
         }
         color = sharedPreferences.getInt("color", getColor(R.color.black));
+        if (sharedPreferences.getBoolean("wallpaper_color", false) && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            // Material You: a deep tone from the wallpaper palette.
+            color = getColor(android.R.color.system_accent1_700);
+        }
         textColor = isColorDark(color) ? getColor(R.color.white) : getColor(R.color.black);
         last_min_size = minWidth;
         WindowManager.LayoutParams mParams = getParams(minWidth, minHeight, flags);
@@ -487,6 +499,19 @@ public class OverlayService extends AccessibilityService {
                 float deltaY = y2 - y1;
                 float deltaX = x2 - x1;
 
+                if (binded_plugin == null) {
+                    // Idle island: gestures run the user's quick actions.
+                    if (Math.abs(deltaX) > MIN_DISTANCE && Math.abs(deltaX) > Math.abs(deltaY)) {
+                        runGesture(deltaX < 0 ? "gesture_swipe_left" : "gesture_swipe_right");
+                    } else if (-deltaY > MIN_DISTANCE) {
+                        runGesture("gesture_swipe_up");
+                    } else if (deltaY > MIN_DISTANCE) {
+                        runGesture("gesture_swipe_down");
+                    } else if (press_start.get() + ViewConfiguration.getLongPressTimeout() > Instant.now().toEpochMilli()) {
+                        onIdleTap();
+                    }
+                    return false;
+                }
                 if (Math.abs(deltaX) > MIN_DISTANCE) {
                     if (binded_plugin != null) {
                         if (deltaX < 0) {
@@ -825,6 +850,52 @@ public class OverlayService extends AccessibilityService {
             mView.setVisibility(View.INVISIBLE);
         } else mView.setVisibility(View.VISIBLE);
         refreshBubble();
+    }
+
+    // ------------------------------------------------------------ gestures on the idle island
+
+    private static final long DOUBLE_TAP_MS = 300;
+    private long lastIdleTap = 0;
+    private final Runnable singleTapRunnable = () -> runGesture("gesture_tap");
+
+    private String gestureAction(String key) {
+        String[] keys = com.theglitchh.NothingLand.activities.GestureSettingsActivity.KEYS;
+        String[] defaults = com.theglitchh.NothingLand.activities.GestureSettingsActivity.DEFAULTS;
+        for (int i = 0; i < keys.length; i++) {
+            if (keys[i].equals(key)) return sharedPreferences.getString(key, defaults[i]);
+        }
+        return sharedPreferences.getString(key, QuickActions.NONE);
+    }
+
+    /** Runs the action for a gesture key; false when nothing is configured. */
+    private boolean runGesture(String key) {
+        String action = gestureAction(key);
+        if (action == null || QuickActions.NONE.equals(action)) return false;
+        haptic(HapticFeedbackConstants.VIRTUAL_KEY);
+        return QuickActions.run(this, action, this::showCard);
+    }
+
+    private void onIdleTap() {
+        boolean hasDouble = !QuickActions.NONE.equals(gestureAction("gesture_double_tap"));
+        long now = System.currentTimeMillis();
+        if (hasDouble && now - lastIdleTap < DOUBLE_TAP_MS) {
+            mHandler.removeCallbacks(singleTapRunnable);
+            lastIdleTap = 0;
+            runGesture("gesture_double_tap");
+            return;
+        }
+        lastIdleTap = now;
+        if (hasDouble) {
+            mHandler.postDelayed(singleTapRunnable, DOUBLE_TAP_MS);
+        } else {
+            runGesture("gesture_tap");
+        }
+    }
+
+    /** Opens a quick card (sliders or favorite apps) in the island. */
+    public void showCard(String card) {
+        plugins.stream().filter(p -> p instanceof CardsPlugin).findFirst()
+                .ifPresent(p -> ((CardsPlugin) p).show(card));
     }
 
     // ------------------------------------------------------------ smooth animation
