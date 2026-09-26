@@ -43,6 +43,7 @@ import com.theglitchh.NothingLand.services.OverlayService;
 import com.theglitchh.NothingLand.services.UpdaterService;
 import com.theglitchh.NothingLand.utils.adapters.RecylerViewSettingsAdapter;
 import com.theglitchh.NothingLand.utils.SettingStruct;
+import com.theglitchh.NothingLand.utils.DemoNotifications;
 import com.google.android.material.card.MaterialCardView;
 import com.google.android.material.color.MaterialColors;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
@@ -160,6 +161,23 @@ public class MainActivity extends AppCompatActivity implements SharedPreferences
                 sharedPreferences.edit().putBoolean("enable_on_lockscreen", checked).apply();
             }
         });
+        settings.add(new SettingStruct("Gestures and quick cards", "App Settings", SettingStruct.TYPE_CUSTOM) {
+            @Override
+            public void onClick(Context c) {
+                startActivity(new Intent(MainActivity.this, GestureSettingsActivity.class));
+            }
+        });
+        settings.add(new SettingStruct("Color the island from wallpaper (Material You)", "App Settings", SettingStruct.TYPE_TOGGLE) {
+            @Override
+            public boolean onAttach(Context ctx) {
+                return sharedPreferences.getBoolean("wallpaper_color", false);
+            }
+
+            @Override
+            public void onCheckChanged(boolean checked, Context ctx) {
+                sharedPreferences.edit().putBoolean("wallpaper_color", checked).apply();
+            }
+        });
         settings.add(appToggle("Smooth animations", "smooth_animation"));
         settings.add(appToggle("Show a second activity as a bubble", "split_bubble"));
         settings.add(appToggle("Color the island from album art", "album_color"));
@@ -175,6 +193,12 @@ public class MainActivity extends AppCompatActivity implements SharedPreferences
                 sharedPreferences.edit().putBoolean("clip_copy_enabled", checked).apply();
             }
         });
+        settings.add(null);
+        settings.add(demo("Demo: incoming call", () -> DemoNotifications.incomingCall(this)));
+        settings.add(demo("Demo: 3-minute timer", () -> DemoNotifications.timer(this)));
+        settings.add(demo("Demo: download progress", () -> DemoNotifications.download(this)));
+        settings.add(demo("Demo: Maps navigation", () -> DemoNotifications.navigation(this)));
+        settings.add(demo("Demo: clear all demo items", () -> DemoNotifications.clearAll(this)));
         settings.add(null);
         ExportedPlugins.getPlugins().forEach(x -> {
             settings.add(new SettingStruct("Enable " + x.getName() + " Plugin", x.getName() + " Plugin Settings") {
@@ -208,6 +232,17 @@ public class MainActivity extends AppCompatActivity implements SharedPreferences
     }
 
     private RecyclerView recyclerView;
+
+    /** A tappable demo entry that fires a fake event for testing the island. */
+    private SettingStruct demo(String label, Runnable action) {
+        return new SettingStruct(label, "Demo Mode", SettingStruct.TYPE_CUSTOM) {
+            @Override
+            public void onClick(Context c) {
+                action.run();
+                Toast.makeText(MainActivity.this, "Sent. Check the island.", Toast.LENGTH_SHORT).show();
+            }
+        };
+    }
 
     /** On/off setting stored under key, on by default. */
     private SettingStruct appToggle(String label, String key) {
@@ -294,7 +329,8 @@ public class MainActivity extends AppCompatActivity implements SharedPreferences
         sharedPreferences.getAll().forEach((key, value) -> {
             if (value instanceof Boolean) {
                 b.putBoolean(key, (boolean) value);
-
+            } else if (value instanceof String) {
+                b.putString(key, (String) value);
             }
         });
         intent.putExtra("settings", b);
