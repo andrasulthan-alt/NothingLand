@@ -47,6 +47,8 @@ import android.view.ViewGroup;
 import android.view.ViewOutlineProvider;
 import android.view.WindowManager;
 import android.view.accessibility.AccessibilityEvent;
+import android.view.HapticFeedbackConstants;
+import android.view.animation.DecelerateInterpolator;
 
 import android.view.animation.OvershootInterpolator;
 import android.widget.FrameLayout;
@@ -87,12 +89,12 @@ public class OverlayService extends AccessibilityService {
                 if (sharedPreferences.getBoolean("enable_on_lockscreen", false)) return;
                 if (mView != null) {
                     mView.setVisibility(View.VISIBLE);
-
-
+                    updateBubble();
                 }
             } else if (intent.getAction().equals(Intent.ACTION_SCREEN_OFF)) {
                 if (sharedPreferences.getBoolean("enable_on_lockscreen", false)) return;
                 mView.setVisibility(View.INVISIBLE);
+                hideBubble();
             } else if (intent.getAction().equals(getPackageName() + ".OVERLAY_LAYOUT_CHANGE")) {
                 Bundle settings = Objects.requireNonNull(intent.getExtras()).getBundle("settings");
                 assert settings != null;
@@ -130,11 +132,13 @@ public class OverlayService extends AccessibilityService {
                         if (mainView != null) {
                             mainView.setBackground(background);
                             applyBlurToMainView();
+                            imageBackground = true;
                         }
                     } catch (Exception e) {
                         Log.e("IMAGE_CHANGED", "Failed to load image URI", e);
                     }
                 }else {
+                    imageBackground = false;
                     int targetColor = 0x80000000;
                     color = Objects.requireNonNull(intent.getExtras()).getInt("color", Color.RED);
 
@@ -153,6 +157,7 @@ public class OverlayService extends AccessibilityService {
                         }
 
                     }
+                    if (colorOverride != null) applyIslandColor();
                 }
 
             } else {
@@ -163,8 +168,14 @@ public class OverlayService extends AccessibilityService {
                         sharedPreferences.putBoolean(s, settings.getBoolean(s));
                     }
                 }
-                plugins.forEach(BasePlugin::onDestroy);
+                plugins.forEach(p -> {
+                    try {
+                        p.onDestroy();
+                    } catch (Throwable ignored) {
+                    }
+                });
                 queued.clear();
+                removeBubble();
                 if (mView != null && mWindowManager != null) {
                     mWindowManager.removeViewImmediate(mView);
                 }
@@ -204,6 +215,7 @@ public class OverlayService extends AccessibilityService {
 
 
     private void expandOverlay() {
+        haptic(HapticFeedbackConstants.LONG_PRESS);
         if (binded_plugin != null) {
             if (sharedPreferences.getBoolean("invert_click", false)) {
                 binded_plugin.onClick();
@@ -351,6 +363,7 @@ public class OverlayService extends AccessibilityService {
                 }
             });
             queued.clear();
+            removeBubble();
             if (mView != null && mWindowManager != null && mView.getParent() != null) {
                 mWindowManager.removeViewImmediate(mView);
             }
@@ -399,6 +412,7 @@ public class OverlayService extends AccessibilityService {
     private void init() {
 
         binded_plugin = null;
+        colorOverride = null;
         int flags = WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH | WindowManager.LayoutParams.FLAG_FULLSCREEN | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN | WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE;
 
         flags |= WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED;
@@ -494,6 +508,7 @@ public class OverlayService extends AccessibilityService {
                 if (Math.abs(deltaX) < MIN_DISTANCE && Math.abs(deltaY) < MIN_DISTANCE) {
                     if (press_start.get() + ViewConfiguration.getLongPressTimeout() > Instant.now().toEpochMilli()) {
                         if (binded_plugin != null) {
+                            haptic(HapticFeedbackConstants.VIRTUAL_KEY);
                             if (sharedPreferences.getBoolean("invert_click", false)) {
                                 binded_plugin.onExpand();
 
@@ -550,6 +565,10 @@ public class OverlayService extends AccessibilityService {
         WindowManager.LayoutParams params = (WindowManager.LayoutParams) mView.getLayoutParams();
         if (expanded) {
             if (!expandedPrev) last_min_size = mView.getMeasuredWidth();
+        }
+        if (sharedPreferences.getBoolean("smooth_animation", true)) {
+            animateOverlaySmooth(h, w, init_w, expanded, callBackStart, callBackEnd, null);
+            return;
         }
         ValueAnimator height_anim = ValueAnimator.ofInt(params.height, h);
         height_anim.setDuration(800);
@@ -615,6 +634,10 @@ public class OverlayService extends AccessibilityService {
         WindowManager.LayoutParams params = (WindowManager.LayoutParams) mView.getLayoutParams();
         if (expanded) {
             if (!expandedPrev) last_min_size = mView.getMeasuredWidth();
+        }
+        if (sharedPreferences.getBoolean("smooth_animation", true)) {
+            animateOverlaySmooth(h, w, init_w, expanded, callBackStart, callBackEnd, onChange);
+            return;
         }
         ValueAnimator height_anim = ValueAnimator.ofInt(params.height, h);
         height_anim.setDuration(800);
@@ -696,6 +719,7 @@ public class OverlayService extends AccessibilityService {
         if (queued.size() <= 0) {
             if (binded_plugin != null) binded_plugin.onUnbind();
             closeOverlay();
+            hideBubble();
             return;
         }//pplyBlurToMainView();
         if (binded_plugin != null && Objects.equals(queued.get(0), binded_plugin.getID())) {
@@ -724,6 +748,7 @@ public class OverlayService extends AccessibilityService {
             }
             mWindowManager.updateViewLayout(mView, params);
             if (binded_plugin != null) binded_plugin.onBindComplete();
+            refreshBubble();
             return;
         }
         ViewGroup parent = (ViewGroup) replace.getParent();
@@ -743,6 +768,7 @@ public class OverlayService extends AccessibilityService {
         }
         mWindowManager.updateViewLayout(mView, params);
         if (binded_plugin != null) binded_plugin.onBindComplete();
+        refreshBubble();
     }
     private void applyBlurToMainView() {
         View mainView = mView.findViewById(R.id.main);
@@ -798,6 +824,225 @@ public class OverlayService extends AccessibilityService {
         if (newConfig.orientation == Configuration.ORIENTATION_LANDSCAPE) {
             mView.setVisibility(View.INVISIBLE);
         } else mView.setVisibility(View.VISIBLE);
+        refreshBubble();
+    }
+
+    // ------------------------------------------------------------ smooth animation
+
+    /**
+     * Resizes the island with a single animator that updates the window once per
+     * frame (the classic path runs separate height, width and x animators, each
+     * forcing its own window relayout). A hardware layer is used while it runs.
+     * Switch off with the "Smooth animations" setting to get the classic path.
+     */
+    private void animateOverlaySmooth(int h, int w, int initW, boolean expanded, CallBack callBackStart,
+                                      CallBack callBackEnd, CallBack onChange) {
+        WindowManager.LayoutParams params = (WindowManager.LayoutParams) mView.getLayoutParams();
+        final int startH = params.height;
+        final int startW = mView.getMeasuredWidth();
+        final int startX = params.x;
+        final int targetX = expanded ? 0 : x;
+        ValueAnimator animator = ValueAnimator.ofFloat(0f, 1f);
+        animator.setDuration(expanded ? 450 : 380);
+        animator.setInterpolator(w != 0 ? new OvershootInterpolator(0.8f) : new DecelerateInterpolator());
+        animator.addUpdateListener(a -> {
+            float f = (float) a.getAnimatedValue();
+            float linear = a.getAnimatedFraction();
+            params.height = Math.max(1, (int) (startH + (h - startH) * f));
+            params.width = Math.max(1, Math.abs((int) (startW + (w - startW) * f)));
+            params.x = (int) (startX + (targetX - startX) * linear);
+            if (onChange != null) onChange.onChange(linear);
+            if (mView.getParent() != null) mWindowManager.updateViewLayout(mView, params);
+        });
+        animator.addListener(new AnimatorListenerAdapter() {
+            @Override
+            public void onAnimationStart(Animator animation) {
+                hideBubble();
+                mView.setLayerType(View.LAYER_TYPE_HARDWARE, null);
+                callBackStart.onFinish();
+            }
+
+            @Override
+            public void onAnimationEnd(Animator animation) {
+                mView.setLayerType(View.LAYER_TYPE_NONE, null);
+                callBackEnd.onFinish();
+                if (initW == ViewGroup.LayoutParams.WRAP_CONTENT) {
+                    params.width = ViewGroup.LayoutParams.WRAP_CONTENT;
+                }
+                params.x = targetX;
+                if (mView.getParent() != null) mWindowManager.updateViewLayout(mView, params);
+                refreshBubble();
+            }
+        });
+        animator.start();
+    }
+
+    // ------------------------------------------------------------ haptics
+
+    private void haptic(int type) {
+        if (mView == null || !sharedPreferences.getBoolean("haptics_enabled", true)) return;
+        try {
+            mView.performHapticFeedback(type, HapticFeedbackConstants.FLAG_IGNORE_VIEW_SETTING);
+        } catch (Throwable ignored) {
+        }
+    }
+
+    // ------------------------------------------------------------ island colour from plugins
+
+    private Integer colorOverride = null;
+    private boolean imageBackground = false;
+
+    /** Temporarily colours the island (e.g. from the album art). Cleared on unbind. */
+    public void setIslandColorOverride(int c) {
+        colorOverride = c;
+        applyIslandColor();
+    }
+
+    public void clearIslandColorOverride() {
+        if (colorOverride == null) return;
+        colorOverride = null;
+        applyIslandColor();
+    }
+
+    private int currentIslandColor() {
+        return colorOverride != null ? colorOverride : color;
+    }
+
+    private void applyIslandColor() {
+        if (mView == null || imageBackground) return;
+        int c = currentIslandColor();
+        textColor = isColorDark(c) ? getColor(R.color.white) : getColor(R.color.black);
+        mView.setBackgroundTintList(ColorStateList.valueOf(c));
+        View main = mView.findViewById(R.id.main);
+        if (main != null) main.setBackgroundTintList(ColorStateList.valueOf(c));
+        if (bubbleView != null) bubbleView.setBackgroundTintList(ColorStateList.valueOf(c));
+        if (binded_plugin != null) {
+            try {
+                binded_plugin.onTextColorChange();
+            } catch (Throwable ignored) {
+            }
+        }
+    }
+
+    // ------------------------------------------------------------ second activity bubble
+
+    private FrameLayout bubbleView;
+    private ImageView bubbleIcon;
+    private WindowManager.LayoutParams bubbleParams;
+    private String bubblePluginId;
+
+    /** Puts a plugin in front of the others (bubble tap, or an incoming call). */
+    public void promote(BasePlugin plugin) {
+        queued.remove(plugin.getID());
+        queued.add(0, plugin.getID());
+        bindPlugin();
+    }
+
+    /** Plugins call this when the icon they'd show in the bubble changes. */
+    public void refreshBubble() {
+        mHandler.removeCallbacks(bubbleUpdater);
+        mHandler.postDelayed(bubbleUpdater, 60);
+    }
+
+    private final Runnable bubbleUpdater = this::updateBubble;
+
+    private boolean islandExpanded() {
+        if (mView == null) return false;
+        return mView.getWidth() > metrics.widthPixels * 0.6f || mView.getHeight() > minHeight * 1.5f;
+    }
+
+    private void updateBubble() {
+        try {
+            if (mView == null || mView.getVisibility() != View.VISIBLE || islandExpanded()
+                    || !sharedPreferences.getBoolean("split_bubble", true) || queued.size() < 2) {
+                hideBubble();
+                return;
+            }
+            Drawable icon = null;
+            String id = null;
+            for (int i = 1; i < queued.size() && icon == null; i++) {
+                final String qid = queued.get(i);
+                Optional<BasePlugin> p = plugins.stream().filter(pl -> pl.getID().equals(qid)).findFirst();
+                if (p.isPresent()) {
+                    icon = p.get().getMiniIcon();
+                    id = qid;
+                }
+            }
+            if (icon == null) {
+                hideBubble();
+                return;
+            }
+            ensureBubble();
+            bubbleIcon.setImageDrawable(icon);
+            bubblePluginId = id;
+            positionBubble();
+            bubbleView.setVisibility(View.VISIBLE);
+        } catch (Throwable t) {
+            Log.w("OverlayService", "Bubble update failed", t);
+            hideBubble();
+        }
+    }
+
+    private void ensureBubble() {
+        if (bubbleView != null) return;
+        bubbleView = new FrameLayout(this);
+        bubbleView.setBackgroundResource(R.drawable.rounded_corner);
+        bubbleView.setBackgroundTintList(ColorStateList.valueOf(currentIslandColor()));
+        bubbleIcon = new ImageView(this);
+        bubbleIcon.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        bubbleIcon.setClipToOutline(true);
+        bubbleIcon.setOutlineProvider(new ViewOutlineProvider() {
+            @Override
+            public void getOutline(View view, Outline outline) {
+                outline.setOval(0, 0, view.getWidth(), view.getHeight());
+            }
+        });
+        int pad = dpToInt(6);
+        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
+        lp.setMargins(pad, pad, pad, pad);
+        bubbleView.addView(bubbleIcon, lp);
+        bubbleView.setOnClickListener(v -> {
+            haptic(HapticFeedbackConstants.VIRTUAL_KEY);
+            final String id = bubblePluginId;
+            if (id == null) return;
+            plugins.stream().filter(pl -> pl.getID().equals(id)).findFirst().ifPresent(this::promote);
+        });
+        int flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
+                | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN | WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED;
+        bubbleParams = getParams(minHeight, minHeight, flags);
+        bubbleParams.gravity = Gravity.TOP | Gravity.CENTER;
+        bubbleParams.y = y;
+        bubbleView.setVisibility(View.GONE);
+        mWindowManager.addView(bubbleView, bubbleParams);
+    }
+
+    private void positionBubble() {
+        WindowManager.LayoutParams p = (WindowManager.LayoutParams) mView.getLayoutParams();
+        int islandCenter = p.x;
+        int half = mView.getWidth() / 2;
+        int size = minHeight;
+        int offset = half + dpToInt(6) + size / 2;
+        int right = islandCenter + offset;
+        // Put it on the left if it would run off the right edge.
+        bubbleParams.x = (right + size / 2 > metrics.widthPixels / 2) ? islandCenter - offset : right;
+        bubbleParams.y = p.y + (mView.getHeight() - size) / 2;
+        bubbleParams.width = size;
+        bubbleParams.height = size;
+        mWindowManager.updateViewLayout(bubbleView, bubbleParams);
+    }
+
+    private void hideBubble() {
+        if (bubbleView != null) bubbleView.setVisibility(View.GONE);
+    }
+
+    private void removeBubble() {
+        try {
+            if (bubbleView != null && bubbleView.getParent() != null) mWindowManager.removeViewImmediate(bubbleView);
+        } catch (Throwable ignored) {
+        }
+        bubbleView = null;
+        bubbleIcon = null;
     }
 
     public int dpToInt(int v) {
@@ -808,6 +1053,7 @@ public class OverlayService extends AccessibilityService {
     public void onDestroy() {
         super.onDestroy();
         unregisterReceiver(broadcastReceiver);
+        removeBubble();
         mWindowManager.removeView(mView);
         plugins.forEach(BasePlugin::onDestroy);
         Runtime.getRuntime().exit(0);
