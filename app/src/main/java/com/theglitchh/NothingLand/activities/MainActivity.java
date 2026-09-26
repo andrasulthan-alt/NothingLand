@@ -74,9 +74,19 @@ public class MainActivity extends AppCompatActivity implements SharedPreferences
         ) || ActivityCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             startActivity(new Intent(this, PermissionActivity.class));
         }
+        // Ask once for the runtime permissions the island uses: notifications (Android 13+)
+        // and Bluetooth, for the "headphones connected" mini event (Android 12+).
+        ArrayList<String> ask = new ArrayList<>();
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
                 ActivityCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-            ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.POST_NOTIFICATIONS}, 105);
+            ask.add(Manifest.permission.POST_NOTIFICATIONS);
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+                ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
+            ask.add(Manifest.permission.BLUETOOTH_CONNECT);
+        }
+        if (!ask.isEmpty()) {
+            ActivityCompat.requestPermissions(this, ask.toArray(new String[0]), 105);
         }
         MaterialCardView enable_btn = findViewById(R.id.enable_switch);
         enable_btn.setOnClickListener(l -> {
