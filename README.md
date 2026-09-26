@@ -18,8 +18,15 @@ OmniLand is a fork of [NothingLand](https://github.com/TheSerphh/NothingLand), o
 - **Two activities at once**: when two things are active (for example music and a timer), the second one appears as a small bubble next to the island; tap it to swap
 - **Album colors**: the island takes on a color from the album art of the song that's playing
 - **Smooth animations and haptic feedback**
+- **Maps navigation**: next turn, distance and ETA from Google Maps and other navigation apps
+- **Hotspot status**: connected devices while your hotspot is on
+- **Gestures on the idle island**: tap, double tap, long press and swipes can toggle the flashlight, open the camera or an app, take a screenshot, open notifications or quick settings, and more
+- **Quick cards**: a sliders card (brightness, media volume, flashlight brightness) and a favorite apps card
+- **Mini system events**: Bluetooth connected, ringer mode, airplane mode, hotspot, headphones, low battery, battery saver
+- **Charging estimate**: time until full while charging
+- **Demo mode**: fake call, timer, download and navigation events to try everything out
 
-Each of the last four can be switched off in OmniLand's settings.
+Most of these can be switched off individually in OmniLand's settings.
 
 ## Requirements
 
@@ -45,6 +52,8 @@ Updates install over the previous version and keep your settings.
    On Android 13 and newer you'll first see **"Restricted setting"**. Tap OK, then go to Settings > Apps > OmniLand, tap **Allow restricted settings** (in the ⋮ menu or at the top right), and try again.
 4. Optional: in OmniLand, tap **Disable battery optimization** so the system doesn't stop the island in the background.
 
+> **After updating OmniLand**, if calls, timers or notifications stop appearing in the island, restart your phone once. Android sometimes doesn't reconnect notification access after an app update.
+
 ## Permissions
 
 | Permission | Why |
@@ -54,7 +63,9 @@ Updates install over the previous version and keep your settings.
 | Microphone (record audio) | Only for the music visualizer; audio is analyzed live and never recorded or saved |
 | Photos / storage | Only if you choose a custom background image |
 | Internet | Only to check GitHub for a newer OmniLand version |
-| Query installed apps | To list apps in the notification filter |
+| Query installed apps | To list apps in the notification filter, gestures and the favorite apps card |
+| Modify system settings | Only if you use the brightness slider; asked for when you first move it |
+| Nearby devices (Bluetooth) | Only to show "headphones connected" events |
 
 OmniLand has no ads, no analytics and no tracking.
 
@@ -65,4 +76,5 @@ Every push to the `NL-beta` branch builds an APK with GitHub Actions (Actions ta
 ## Credits and license
 
 - Original app: [NothingLand](https://github.com/TheSerphh/NothingLand) by theglitchh, released under the MIT License. The original notice is kept in [LICENSE-NothingLand-MIT.txt](LICENSE-NothingLand-MIT.txt).
+- Navigation parsing, hotspot detection and system-event handling follow the approach of [Smart Island](https://github.com/agupta07505/SmartIsland) by Animesh Gupta (GPL-3.0), re-implemented in Java for OmniLand.
 - OmniLand, including all changes in this fork, is licensed under the [GNU General Public License v3.0](LICENSE).
