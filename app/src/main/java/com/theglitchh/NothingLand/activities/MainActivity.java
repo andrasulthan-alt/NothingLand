@@ -285,40 +285,26 @@ public class MainActivity extends AppCompatActivity implements SharedPreferences
     private final BroadcastReceiver broadcastReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
-            if (intent.getAction().equals(getPackageName() + ".UPDATE_AVAIL")) {
-                new MaterialAlertDialogBuilder(MainActivity.this).setTitle("New Update Available")
-                        .setMessage("We would like to update this app from " + BuildConfig.VERSION_NAME + " --> " + intent.getExtras().getString("version") +
-                                ".\n\nUpdating app generally means better and more stable experience.")
-                        .setCancelable(false)
-                        .setNegativeButton("Later", (dialogInterface, i) -> {
-                            dialogInterface.dismiss();
-                        })
-                        .setPositiveButton("Update Now", ((dialogInterface, i) -> {
-                            if (ActivityCompat.checkSelfPermission(MainActivity.this, Manifest.permission.WRITE_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED) {
-                                MainActivity.this.sendBroadcast(new Intent(getPackageName() + ".START_UPDATE"));
-                                Toast.makeText(MainActivity.this, "Updating in background! Please don't kill the app", Toast.LENGTH_SHORT).show();
-                            } else
-                                ActivityCompat.requestPermissions(MainActivity.this, new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE, Manifest.permission.READ_EXTERNAL_STORAGE}, 102);
-                            dialogInterface.dismiss();
-                            if (!getPackageManager().canRequestPackageInstalls()) {
-                                startActivityForResult(new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES)
-                                        .setData(Uri.parse(String.format("package:%s", getPackageName()))), 103);
-                                Toast.makeText(MainActivity.this, "Please provide install access to update the application.", Toast.LENGTH_SHORT).show();
-                            }
-                        }))
-                        .show();
-            }
+            if (!(getPackageName() + ".UPDATE_AVAIL").equals(intent.getAction())) return;
+            String version = intent.getStringExtra("version");
+            String url = intent.getStringExtra("url");
+            if (isFinishing() || url == null) return;
+            new MaterialAlertDialogBuilder(MainActivity.this)
+                    .setTitle("Update available")
+                    .setMessage("OmniLand " + (version != null ? version : "update") + " is available (you have "
+                            + BuildConfig.VERSION_NAME + ").\n\nDownload it from the release page, or update through "
+                            + "Obtainium or Komi Store. Your settings are kept.")
+                    .setNegativeButton("Later", (dialogInterface, i) -> dialogInterface.dismiss())
+                    .setPositiveButton("Open download page", (dialogInterface, i) -> {
+                        try {
+                            startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)));
+                        } catch (ActivityNotFoundException e) {
+                            Toast.makeText(MainActivity.this, "No browser found", Toast.LENGTH_SHORT).show();
+                        }
+                    })
+                    .show();
         }
     };
-
-    @Override
-    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        if (requestCode == 102 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-            MainActivity.this.sendBroadcast(new Intent(getPackageName() + ".START_UPDATE"));
-            Toast.makeText(MainActivity.this, "Updating in background! Please don't kill the app", Toast.LENGTH_SHORT).show();
-        }
-    }
 
     private int dpToInt(int v) {
         return (int) TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, v, getResources().getDisplayMetrics());
