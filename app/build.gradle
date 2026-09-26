@@ -4,30 +4,20 @@ plugins {
 
 android {
     compileSdk 33
-    sourceSets {
-        github {
-            manifest.srcFile 'github/AndroidManifest.xml'
-        }
-    }
     defaultConfig {
-        applicationId "com.theglitchh.NothingLand"
+        // OmniLand's own app ID, so it can be installed next to the original NothingLand.
+        // Never change this again: it's tied to the release signing key and to
+        // Android developer verification.
+        applicationId "io.github.andrasulthan_alt.omniland"
         minSdk 26
         targetSdk 33
-        versionCode 4
-        versionName "0.4"
-        // Repo the in-app updater checks for new releases. Point this at YOUR fork,
-        // not the upstream author's repo, or you'll get prompted to install their build.
+        versionCode 5
+        versionName "0.5"
+        // Repo the in-app update checker looks at for new releases.
         buildConfigField "String", "UPDATE_REPO", "\"andrasulthan-alt/OmniLand\""
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
     signingConfigs {
-        github {
-            def tmpFilePath = System.getProperty("user.home") + "/work/_temp/keystore/keystore.jks"
-            storeFile = file(tmpFilePath)
-            storePassword System.getenv("SIGNING_KEY_PASSWORD")
-            keyAlias System.getenv("SIGNING_KEY_ALIAS")
-            keyPassword System.getenv("SIGNING_KEY_PASSWORD")
-        }
         // Permanent OmniLand release key. Supplied by GitHub Actions secrets,
         // never committed to the repo. Every release MUST be signed with this
         // same key, otherwise updates can't install over the previous version.
@@ -44,14 +34,9 @@ android {
     }
 
     buildTypes {
-        github {
-            minifyEnabled false
-            buildConfigField "Boolean", "AUTO_UPDATE", "true"
-            signingConfig signingConfigs.github
-        }
         release {
             minifyEnabled false
-            buildConfigField "Boolean", "AUTO_UPDATE", "false"
+            buildConfigField "Boolean", "AUTO_UPDATE", "true"
             if (System.getenv("OMNILAND_KEYSTORE_PATH")) {
                 signingConfig signingConfigs.release
             }
@@ -83,7 +68,7 @@ dependencies {
     }
     implementation 'androidx.appcompat:appcompat:1.5.0'
     implementation 'androidx.core:core:1.9.0'
-    implementation 'com.google.android.material:material:1.8.0-alpha01'
+    implementation 'com.google.android.material:material:1.8.0'
     testImplementation 'junit:junit:4.13.2'
     androidTestImplementation 'androidx.test.ext:junit:1.1.3'
     androidTestImplementation 'androidx.test.espresso:espresso-core:3.4.0'
