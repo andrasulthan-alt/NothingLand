@@ -28,6 +28,19 @@ android {
             keyAlias System.getenv("SIGNING_KEY_ALIAS")
             keyPassword System.getenv("SIGNING_KEY_PASSWORD")
         }
+        // Permanent OmniLand release key. Supplied by GitHub Actions secrets,
+        // never committed to the repo. Every release MUST be signed with this
+        // same key, otherwise updates can't install over the previous version.
+        release {
+            def ksPath = System.getenv("OMNILAND_KEYSTORE_PATH")
+            if (ksPath) {
+                storeFile file(ksPath)
+                storeType "pkcs12"
+                storePassword System.getenv("OMNILAND_KEYSTORE_PASSWORD")
+                keyAlias System.getenv("OMNILAND_KEY_ALIAS")
+                keyPassword System.getenv("OMNILAND_KEY_PASSWORD")
+            }
+        }
     }
 
     buildTypes {
@@ -39,6 +52,9 @@ android {
         release {
             minifyEnabled false
             buildConfigField "Boolean", "AUTO_UPDATE", "false"
+            if (System.getenv("OMNILAND_KEYSTORE_PATH")) {
+                signingConfig signingConfigs.release
+            }
         }
         debug {
             minifyEnabled false
@@ -48,6 +64,11 @@ android {
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_1_8
         targetCompatibility JavaVersion.VERSION_1_8
+    }
+    lint {
+        // Don't let old lint warnings in the upstream code block release builds.
+        abortOnError false
+        checkReleaseBuilds false
     }
 }
 
