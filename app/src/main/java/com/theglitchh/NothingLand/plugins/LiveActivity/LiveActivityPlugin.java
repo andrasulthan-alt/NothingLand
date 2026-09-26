@@ -31,6 +31,8 @@ import com.theglitchh.NothingLand.utils.SettingStruct;
 
 import java.util.ArrayList;
 import java.util.Locale;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * "Live Activities": shows calls, timers/stopwatches and download/upload progress
@@ -43,18 +45,26 @@ public class LiveActivityPlugin extends BasePlugin {
     public static final String TYPE_CALL = "call";
     public static final String TYPE_TIMER = "timer";
     public static final String TYPE_PROGRESS = "progress";
+    public static final String TYPE_NAV = "nav";
+    public static final String TYPE_HOTSPOT = "hotspot";
 
     // Setting keys, also read by NotiService.
     public static final String PREF_CALLS = "live_calls";
     public static final String PREF_TIMERS = "live_timers";
     public static final String PREF_PROGRESS = "live_progress";
+    public static final String PREF_NAV = "live_nav";
+    public static final String PREF_HOTSPOT = "live_hotspot";
+
+    // Leading distance such as "In 200 m" / "1.2 km" (navigation parsing after Smart Island, GPL-3.0).
+    private static final Pattern DISTANCE = Pattern.compile("(\\d+(?:[.,]\\d+)?)\\s*(km|m|mi|ft|meters?|miles?)\\b", Pattern.CASE_INSENSITIVE);
+    private static final Pattern DEVICES = Pattern.compile("(\\d+)\\s*(?:device|connected|client)", Pattern.CASE_INSENSITIVE);
 
     private static final int GREEN = Color.parseColor("#2E9E4F");
     private static final int RED = Color.parseColor("#D93A3A");
     private static final long ANIMATION_MS = 850;
 
     private static class Item {
-        String type, pkg, title, text;
+        String type, pkg, title, text, subText;
         int id;
         long when;
         boolean chrono, countdown, incoming, indeterminate;
@@ -62,12 +72,14 @@ public class LiveActivityPlugin extends BasePlugin {
         PendingIntent contentIntent;
         ArrayList<String> actionTitles = new ArrayList<>();
         ArrayList<PendingIntent> actionIntents = new ArrayList<>();
-        Icon smallIcon;
+        Icon smallIcon, largeIcon;
 
         int priority() {
             if (TYPE_CALL.equals(type)) return 0;
-            if (TYPE_TIMER.equals(type)) return 1;
-            return 2;
+            if (TYPE_NAV.equals(type)) return 1;
+            if (TYPE_TIMER.equals(type)) return 2;
+            if (TYPE_PROGRESS.equals(type)) return 3;
+            return 4;
         }
     }
 
@@ -143,6 +155,7 @@ public class LiveActivityPlugin extends BasePlugin {
         item.id = e.getInt("id");
         item.title = e.getString("title", "");
         item.text = e.getString("body", "");
+        item.subText = e.getString("subtext", "");
         item.when = e.getLong("when", System.currentTimeMillis());
         item.chrono = e.getBoolean("chrono", false);
         item.countdown = e.getBoolean("countdown", false);
@@ -152,6 +165,7 @@ public class LiveActivityPlugin extends BasePlugin {
         item.indeterminate = e.getBoolean("indeterminate", false);
         item.contentIntent = e.getParcelable("content_intent");
         item.smallIcon = e.getParcelable("icon_small");
+        item.largeIcon = e.getParcelable("icon_large");
         ArrayList<String> titles = e.getStringArrayList("action_titles");
         ArrayList<PendingIntent> intents = e.getParcelableArrayList("action_intents");
         if (titles != null && intents != null && titles.size() == intents.size()) {
@@ -293,20 +307,36 @@ public class LiveActivityPlugin extends BasePlugin {
         } catch (Exception ignored) {
         }
         Drawable app = appIcon(it.pkg);
-        if (small != null) {
-            icon.setImageDrawable(small);
-            icon.setImageTintList(ColorStateList.valueOf(TYPE_CALL.equals(it.type) ? GREEN : color));
-        } else {
-            icon.setImageDrawable(app);
-            icon.setImageTintList(null);
+        Drawable large = null;
+        try {
+            if (it.largeIcon != null) large = it.largeIcon.loadDrawable(ctx);
+        } catch (Exception ignored) {
         }
-        panelIcon.setImageDrawable(app != null ? app : small);
+        if (TYPE_NAV.equals(it.type) && large != null) {
+            // Navigation: the maneuver arrow is the important icon.
+            icon.setImageDrawable(large);
+            icon.setImageTintList(null);
+            panelIcon.setImageDrawable(large);
+        } else {
+            if (small != null) {
+                icon.setImageDrawable(small);
+                icon.setImageTintList(ColorStateList.valueOf(TYPE_CALL.equals(it.type) ? GREEN : color));
+            } else {
+                icon.setImageDrawable(app);
+                icon.setImageTintList(null);
+            }
+            panelIcon.setImageDrawable(app != null ? app : small);
+        }
 
         title.setText(it.title);
         title.setTextColor(color);
-        text.setText(it.text);
+        String body = it.text == null ? "" : it.text;
+        if (it.subText != null && !it.subText.isEmpty()) {
+            body = body.isEmpty() ? it.subText : body + "\n" + it.subText;
+        }
+        text.setText(body);
         text.setTextColor(color);
-        text.setVisibility(it.text == null || it.text.isEmpty() ? View.GONE : View.VISIBLE);
+        text.setVisibility(body.isEmpty() ? View.GONE : View.VISIBLE);
         shortText.setTextColor(color);
         chrono.setTextColor(color);
         panelChrono.setTextColor(color);
@@ -354,6 +384,16 @@ public class LiveActivityPlugin extends BasePlugin {
             return String.format(Locale.US, "%d%%", Math.round(100f * it.progress / it.max));
         }
         if (TYPE_CALL.equals(it.type)) return it.title;
+        if (TYPE_NAV.equals(it.type)) {
+            Matcher m = DISTANCE.matcher(it.title == null ? "" : it.title);
+            if (m.find()) return m.group(0);
+            return it.title;
+        }
+        if (TYPE_HOTSPOT.equals(it.type)) {
+            Matcher m = DEVICES.matcher((it.title == null ? "" : it.title) + " " + (it.text == null ? "" : it.text));
+            if (m.find()) return m.group(1) + " 📱";
+            return "On";
+        }
         // Timer from an app that doesn't expose a live clock: show its own text.
         return it.text != null && !it.text.isEmpty() ? it.text : it.title;
     }
@@ -400,6 +440,7 @@ public class LiveActivityPlugin extends BasePlugin {
     private int expandedHeight() {
         int h = ctx.statusBarHeight + ctx.dpToInt(84);
         if (current != null && TYPE_PROGRESS.equals(current.type)) h += ctx.dpToInt(24);
+        if (current != null && current.subText != null && !current.subText.isEmpty()) h += ctx.dpToInt(20);
         if (current != null && TYPE_CALL.equals(current.type) && !current.actionTitles.isEmpty()) h += ctx.dpToInt(60);
         return h;
     }
@@ -541,6 +582,8 @@ public class LiveActivityPlugin extends BasePlugin {
         list.add(toggle("Show calls", PREF_CALLS));
         list.add(toggle("Show timers and stopwatches", PREF_TIMERS));
         list.add(toggle("Show download and upload progress", PREF_PROGRESS));
+        list.add(toggle("Show Maps navigation", PREF_NAV));
+        list.add(toggle("Show hotspot status", PREF_HOTSPOT));
         return list;
     }
 }
