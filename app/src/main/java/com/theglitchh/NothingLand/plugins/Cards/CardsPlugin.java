@@ -240,14 +240,25 @@ public class CardsPlugin extends BasePlugin {
             }
         });
 
-        // Flashlight
+        // Flashlight: brightness levels when the phone supports them (Android 13+ and
+        // a camera driver that reports them), otherwise a simple on/off slider.
         final int torchMax = QuickActions.torchMaxLevel(ctx);
-        panel.addView(label(torchMax > 1 ? "🔦 Flashlight brightness" : "🔦 Flashlight"));
-        slider(torchMax, QuickActions.isTorchOn() ? torchMax : 0, new OnChange() {
+        String torchLabel;
+        if (torchMax > 1) {
+            torchLabel = "🔦 Flashlight brightness (" + torchMax + " levels)";
+        } else if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.TIRAMISU) {
+            torchLabel = "🔦 Flashlight on/off (brightness levels need Android 13+)";
+        } else {
+            torchLabel = "🔦 Flashlight on/off (this phone doesn't offer brightness levels to apps)";
+        }
+        panel.addView(label(torchLabel));
+        slider(torchMax, QuickActions.torchLevel(ctx), new OnChange() {
             @Override
             public void onProgressChanged(SeekBar sb, int value, boolean fromUser) {
                 if (!fromUser) return;
                 resetAutoClose();
+                // Change brightness live while dragging, like the iPhone flashlight.
+                if (torchMax > 1) QuickActions.setTorchLevel(ctx, value);
             }
 
             @Override
