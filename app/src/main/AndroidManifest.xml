@@ -18,6 +18,12 @@
     <uses-permission
         android:name="android.permission.QUERY_ALL_PACKAGES"
         tools:ignore="QueryAllPackagesPermission" />
+    <!-- Bluetooth connected/disconnected mini events (Android 12+ asks the user once). -->
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <!-- Brightness slider in the quick card. Granted by the user in system settings. -->
+    <uses-permission
+        android:name="android.permission.WRITE_SETTINGS"
+        tools:ignore="ProtectedPermissions" />
 
     <application
         android:name=".App"
@@ -56,6 +62,13 @@
             android:name=".activities.AppearanceActivity"
             android:exported="false"
             android:hardwareAccelerated="false" />
+        <activity
+            android:name=".activities.GestureSettingsActivity"
+            android:exported="false" />
+
+        <receiver
+            android:name=".utils.DemoNotifications$DemoReceiver"
+            android:exported="false" />
 
         <service
             android:name=".services.NotiService"
