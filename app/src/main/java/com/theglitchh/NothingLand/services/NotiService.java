@@ -35,6 +35,18 @@ public class NotiService extends NotificationListenerService {
             "com.miui.clock",                     // Xiaomi
             "com.nothing.deskclock"));            // Nothing
 
+    /** Navigation apps (list after Smart Island, GPL-3.0). */
+    private static final Set<String> NAV_APPS = new HashSet<>(Arrays.asList(
+            "com.google.android.apps.maps", "com.waze", "com.sygic.aura", "com.here.app.maps",
+            "com.tomtom.gplay.navapp", "net.osmand", "net.osmand.plus", "ru.yandex.yandexnavi",
+            "ru.yandex.yandexmaps", "com.huawei.maps.app", "com.mapmyindia.maps", "com.autonavi.minimap",
+            "com.baidu.BaiduMap", "com.locnall.KimGiSa", "com.nhn.android.nmap", "com.gojek.app", "com.grabtaxi.passenger"));
+
+    /** System packages that post the "Hotspot on" notification. */
+    private static final Set<String> SYSTEM_APPS = new HashSet<>(Arrays.asList(
+            "com.android.systemui", "com.android.settings", "com.android.networkstack.tethering",
+            "com.samsung.android.net.wifi.wifiguider", "android"));
+
     // Notification.CallStyle extras (Android 12+), read by key so older SDKs still compile.
     private static final String EXTRA_CALL_TYPE = "android.callType";
     private static final String EXTRA_ANSWER_INTENT = "android.answerIntent";
@@ -115,6 +127,16 @@ public class NotiService extends NotificationListenerService {
         if (Notification.CATEGORY_CALL.equals(n.category)) {
             return prefs.getBoolean(LiveActivityPlugin.PREF_CALLS, true) ? LiveActivityPlugin.TYPE_CALL : null;
         }
+        String lower = (text(e, Notification.EXTRA_TITLE) + " " + text(e, Notification.EXTRA_TEXT)).toLowerCase();
+        boolean navCategory = "navigation".equals(n.category);
+        if (ongoing && (navCategory || NAV_APPS.contains(sbn.getPackageName()))
+                && !lower.contains("hotspot") && !lower.contains("recording")) {
+            return prefs.getBoolean(LiveActivityPlugin.PREF_NAV, true) ? LiveActivityPlugin.TYPE_NAV : null;
+        }
+        if (ongoing && SYSTEM_APPS.contains(sbn.getPackageName())
+                && (lower.contains("hotspot") || lower.contains("tethering"))) {
+            return prefs.getBoolean(LiveActivityPlugin.PREF_HOTSPOT, true) ? LiveActivityPlugin.TYPE_HOTSPOT : null;
+        }
         boolean chrono = e.getBoolean(Notification.EXTRA_SHOW_CHRONOMETER, false);
         if (ongoing && (chrono || CLOCK_APPS.contains(sbn.getPackageName()))) {
             return prefs.getBoolean(LiveActivityPlugin.PREF_TIMERS, true) ? LiveActivityPlugin.TYPE_TIMER : null;
@@ -141,6 +163,7 @@ public class NotiService extends NotificationListenerService {
         intent.putExtra("id", sbn.getId());
         intent.putExtra("title", text(e, Notification.EXTRA_TITLE));
         intent.putExtra("body", text(e, Notification.EXTRA_TEXT));
+        intent.putExtra("subtext", text(e, Notification.EXTRA_SUB_TEXT));
         intent.putExtra("when", n.when);
         intent.putExtra("chrono", e.getBoolean(Notification.EXTRA_SHOW_CHRONOMETER, false));
         intent.putExtra("countdown", e.getBoolean(Notification.EXTRA_CHRONOMETER_COUNT_DOWN, false));
@@ -148,6 +171,7 @@ public class NotiService extends NotificationListenerService {
         intent.putExtra("progress_max", e.getInt(Notification.EXTRA_PROGRESS_MAX, 0));
         intent.putExtra("indeterminate", e.getBoolean(Notification.EXTRA_PROGRESS_INDETERMINATE, false));
         intent.putExtra("icon_small", n.getSmallIcon());
+        intent.putExtra("icon_large", n.getLargeIcon());
         if (n.contentIntent != null) intent.putExtra("content_intent", n.contentIntent);
 
         ArrayList<String> titles = new ArrayList<>();
