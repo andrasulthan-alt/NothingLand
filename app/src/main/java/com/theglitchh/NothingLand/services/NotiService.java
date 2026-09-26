@@ -1,18 +1,45 @@
 package com.theglitchh.NothingLand.services;
 
 import android.app.Notification;
+import android.app.PendingIntent;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.SharedPreferences;
+import android.os.Bundle;
+import android.os.Parcelable;
 import android.service.notification.NotificationListenerService;
 import android.service.notification.StatusBarNotification;
 
+import com.theglitchh.NothingLand.plugins.LiveActivity.LiveActivityPlugin;
+
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashSet;
 import java.util.Optional;
+import java.util.Set;
 
 
 public class NotiService extends NotificationListenerService {
+
+    /** Clock apps whose ongoing notifications are timers/stopwatches. */
+    private static final Set<String> CLOCK_APPS = new HashSet<>(Arrays.asList(
+            "com.sec.android.app.clockpackage",   // Samsung
+            "com.google.android.deskclock",       // Google
+            "com.android.deskclock",              // AOSP and many others
+            "com.coloros.alarmclock",             // OPPO / OnePlus
+            "com.oneplus.deskclock",
+            "com.huawei.deskclock",
+            "com.android.BBKClock",               // vivo
+            "com.miui.clock",                     // Xiaomi
+            "com.nothing.deskclock"));            // Nothing
+
+    // Notification.CallStyle extras (Android 12+), read by key so older SDKs still compile.
+    private static final String EXTRA_CALL_TYPE = "android.callType";
+    private static final String EXTRA_ANSWER_INTENT = "android.answerIntent";
+    private static final String EXTRA_DECLINE_INTENT = "android.declineIntent";
+    private static final String EXTRA_HANG_UP_INTENT = "android.hangUpIntent";
 
     @Override
     public void onCreate() {
@@ -32,9 +59,18 @@ public class NotiService extends NotificationListenerService {
 
     @Override
     public void onNotificationPosted(StatusBarNotification sbn) {
-        super.onNotificationRemoved(sbn);
-        Intent intent = new Intent(getPackageName() + ".NOTIFICATION_POSTED");
+        super.onNotificationPosted(sbn);
         Notification notification = sbn.getNotification();
+        String liveType = null;
+        try {
+            liveType = liveActivityType(sbn);
+        } catch (Exception ignored) {
+        }
+        if (liveType != null) {
+            sendLiveActivity(sbn, liveType);
+            return;
+        }
+        Intent intent = new Intent(getPackageName() + ".NOTIFICATION_POSTED");
         intent.putExtra("package_name", sbn.getPackageName());
         intent.putExtra("id", sbn.getId());
         intent.putExtra("time", sbn.getPostTime());
@@ -47,17 +83,115 @@ public class NotiService extends NotificationListenerService {
         } catch (Exception e) {
             //ignore
         }
+        notifications.removeIf(x -> x.getId() == sbn.getId() && x.getPackageName().equals(sbn.getPackageName()));
         notifications.add(sbn);
         sendBroadcast(intent);
     }
 
     @Override
     public void onNotificationRemoved(StatusBarNotification sbn) {
-        super.onNotificationPosted(sbn);
+        super.onNotificationRemoved(sbn);
         Intent intent = new Intent(getPackageName() + ".NOTIFICATION_REMOVED");
         intent.putExtra("id", sbn.getId());
-        notifications.remove(sbn);
+        intent.putExtra("package_name", sbn.getPackageName());
+        notifications.removeIf(x -> x.getKey().equals(sbn.getKey()));
         sendBroadcast(intent);
+    }
+
+    // ---------------------------------------------------------------- live activities
+
+    /**
+     * Decides whether a notification is a call, a timer/stopwatch or a download/upload
+     * in progress. Returns null for normal notifications, or when the Live Activities
+     * plugin (or that kind of activity) is switched off.
+     */
+    private String liveActivityType(StatusBarNotification sbn) {
+        SharedPreferences prefs = getSharedPreferences(getPackageName(), MODE_PRIVATE);
+        if (!prefs.getBoolean("LiveActivityPlugin_enabled", true)) return null;
+        Notification n = sbn.getNotification();
+        Bundle e = n.extras;
+        boolean ongoing = (n.flags & Notification.FLAG_ONGOING_EVENT) != 0;
+
+        if (Notification.CATEGORY_CALL.equals(n.category)) {
+            return prefs.getBoolean(LiveActivityPlugin.PREF_CALLS, true) ? LiveActivityPlugin.TYPE_CALL : null;
+        }
+        boolean chrono = e.getBoolean(Notification.EXTRA_SHOW_CHRONOMETER, false);
+        if (ongoing && (chrono || CLOCK_APPS.contains(sbn.getPackageName()))) {
+            return prefs.getBoolean(LiveActivityPlugin.PREF_TIMERS, true) ? LiveActivityPlugin.TYPE_TIMER : null;
+        }
+        int max = e.getInt(Notification.EXTRA_PROGRESS_MAX, 0);
+        boolean indeterminate = e.getBoolean(Notification.EXTRA_PROGRESS_INDETERMINATE, false);
+        if (ongoing && (max > 0 || indeterminate)) {
+            return prefs.getBoolean(LiveActivityPlugin.PREF_PROGRESS, true) ? LiveActivityPlugin.TYPE_PROGRESS : null;
+        }
+        return null;
+    }
+
+    private static String text(Bundle e, String key) {
+        CharSequence cs = e.getCharSequence(key);
+        return cs == null ? "" : cs.toString();
+    }
+
+    private void sendLiveActivity(StatusBarNotification sbn, String type) {
+        Notification n = sbn.getNotification();
+        Bundle e = n.extras;
+        Intent intent = new Intent(getPackageName() + ".LIVE_POSTED");
+        intent.putExtra("live_type", type);
+        intent.putExtra("package_name", sbn.getPackageName());
+        intent.putExtra("id", sbn.getId());
+        intent.putExtra("title", text(e, Notification.EXTRA_TITLE));
+        intent.putExtra("body", text(e, Notification.EXTRA_TEXT));
+        intent.putExtra("when", n.when);
+        intent.putExtra("chrono", e.getBoolean(Notification.EXTRA_SHOW_CHRONOMETER, false));
+        intent.putExtra("countdown", e.getBoolean(Notification.EXTRA_CHRONOMETER_COUNT_DOWN, false));
+        intent.putExtra("progress", e.getInt(Notification.EXTRA_PROGRESS, 0));
+        intent.putExtra("progress_max", e.getInt(Notification.EXTRA_PROGRESS_MAX, 0));
+        intent.putExtra("indeterminate", e.getBoolean(Notification.EXTRA_PROGRESS_INDETERMINATE, false));
+        intent.putExtra("icon_small", n.getSmallIcon());
+        if (n.contentIntent != null) intent.putExtra("content_intent", n.contentIntent);
+
+        ArrayList<String> titles = new ArrayList<>();
+        ArrayList<PendingIntent> intents = new ArrayList<>();
+        if (LiveActivityPlugin.TYPE_CALL.equals(type)) {
+            boolean incoming = isIncomingCall(n);
+            intent.putExtra("incoming", incoming);
+            // Prefer the standard call buttons (Android 12+ call notifications)...
+            if (incoming) {
+                addIntent(e, EXTRA_DECLINE_INTENT, "Decline", titles, intents);
+                addIntent(e, EXTRA_ANSWER_INTENT, "Answer", titles, intents);
+            } else {
+                addIntent(e, EXTRA_HANG_UP_INTENT, "Hang up", titles, intents);
+            }
+            // ...otherwise use the notification's own buttons (Samsung Phone, WhatsApp, ...).
+            if (titles.isEmpty() && n.actions != null) {
+                for (Notification.Action a : n.actions) {
+                    if (a == null || a.actionIntent == null || a.title == null) continue;
+                    titles.add(a.title.toString());
+                    intents.add(a.actionIntent);
+                    if (titles.size() == 2) break;
+                }
+            }
+        }
+        intent.putStringArrayListExtra("action_titles", titles);
+        intent.putParcelableArrayListExtra("action_intents", intents);
+        sendBroadcast(intent);
+    }
+
+    private static boolean isIncomingCall(Notification n) {
+        int callType = n.extras.getInt(EXTRA_CALL_TYPE, 0);
+        if (callType == 1 || callType == 3) return true;   // incoming / screening
+        if (callType == 2) return false;                   // ongoing
+        boolean chrono = n.extras.getBoolean(Notification.EXTRA_SHOW_CHRONOMETER, false);
+        return !chrono && n.fullScreenIntent != null;
+    }
+
+    private static void addIntent(Bundle e, String key, String title,
+                                  ArrayList<String> titles, ArrayList<PendingIntent> intents) {
+        Parcelable p = e.getParcelable(key);
+        if (p instanceof PendingIntent) {
+            titles.add(title);
+            intents.add((PendingIntent) p);
+        }
     }
 
     private final BroadcastReceiver receiver = new BroadcastReceiver() {
