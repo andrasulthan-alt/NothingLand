@@ -138,16 +138,49 @@ public final class QuickActions {
     private static boolean torchOn = false;
     private static boolean torchCallbackRegistered = false;
 
+    /**
+     * The camera whose flash we use as the flashlight. Phones with several cameras can
+     * report brightness levels on only one of them, so we check them all and prefer
+     * the back camera with the most brightness levels.
+     */
     private static String backCameraWithFlash(CameraManager cm) throws Exception {
+        String best = null;
+        int bestLevels = 0;
+        boolean bestIsBack = false;
         for (String id : cm.getCameraIdList()) {
             CameraCharacteristics c = cm.getCameraCharacteristics(id);
-            Boolean flash = c.get(CameraCharacteristics.FLASH_INFO_AVAILABLE);
+            if (!Boolean.TRUE.equals(c.get(CameraCharacteristics.FLASH_INFO_AVAILABLE))) continue;
             Integer facing = c.get(CameraCharacteristics.LENS_FACING);
-            if (Boolean.TRUE.equals(flash) && facing != null && facing == CameraCharacteristics.LENS_FACING_BACK) {
-                return id;
+            boolean isBack = facing != null && facing == CameraCharacteristics.LENS_FACING_BACK;
+            int levels = 1;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                Integer max = c.get(CameraCharacteristics.FLASH_INFO_STRENGTH_MAXIMUM_LEVEL);
+                if (max != null && max > 1) levels = max;
+            }
+            boolean better = best == null
+                    || (isBack && !bestIsBack)
+                    || (isBack == bestIsBack && levels > bestLevels);
+            if (better) {
+                best = id;
+                bestLevels = levels;
+                bestIsBack = isBack;
             }
         }
-        return null;
+        return best;
+    }
+
+    /** Current flashlight brightness level (0 when off). */
+    public static int torchLevel(Context context) {
+        if (!torchOn) return 0;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            try {
+                CameraManager cm = (CameraManager) context.getSystemService(Context.CAMERA_SERVICE);
+                String id = backCameraWithFlash(cm);
+                if (id != null) return Math.max(1, cm.getTorchStrengthLevel(id));
+            } catch (Exception ignored) {
+            }
+        }
+        return torchMaxLevel(context);
     }
 
     private static void watchTorch(CameraManager cm) {
